@@ -1,0 +1,29 @@
+name: SHSit
+version: '${project.version}'
+main: org.Cry_Legende.sHSit.SHSit
+api-version: '1.21'
+author: Cry_Legende
+description: S'asseoir sur un coussin Minecraft 26.3 (remplace GSit).
+softdepend: [WorldGuard, SuperiorSkyblock2]
+
+commands:
+  sit:
+    description: S'asseoir sur place, ou se relever.
+    usage: /<command>
+  shsit:
+    description: Administration de SHSit.
+    usage: /<command> reload
+
+permissions:
+  shsit.sit:
+    description: S'asseoir d'un clic droit sur un escalier, une dalle ou un tapis.
+    default: true
+  shsit.command:
+    description: Utiliser /sit pour s'asseoir sur place.
+    default: op
+  shsit.bypass:
+    description: S'asseoir malgré les protections d'île et de région.
+    default: op
+  shsit.admin:
+    description: Recharger la configuration.
+    default: op
