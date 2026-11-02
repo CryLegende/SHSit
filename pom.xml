@@ -59,6 +59,10 @@
             <id>bg-repo</id>
             <url>https://repo.bg-software.com/repository/api/</url>
         </repository>
+        <repository>
+            <id>codemc-releases</id>
+            <url>https://repo.codemc.io/repository/maven-releases/</url>
+        </repository>
     </repositories>
 
     <dependencies>
@@ -66,6 +70,13 @@
             <groupId>io.papermc.paper</groupId>
             <artifactId>paper-api</artifactId>
             <version>26.3.build.209-stable</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- packetevents est installé sur le serveur (plugin) : les sièges sont des paquets -->
+        <dependency>
+            <groupId>com.github.retrooper</groupId>
+            <artifactId>packetevents-spigot</artifactId>
+            <version>2.14.0</version>
             <scope>provided</scope>
         </dependency>
         <!-- WorldGuard est facultatif : seule la classe RegionGuard s'en sert -->

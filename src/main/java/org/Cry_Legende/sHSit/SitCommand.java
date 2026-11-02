@@ -11,48 +11,65 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 
-/** /sit (s'asseoir sur place, ou se relever) et /shsit reload. */
+/** /sit /lay /spin /bellyflop /crawl (chacun s'arrête en le retapant) et /shsit. */
 final class SitCommand implements CommandExecutor, TabCompleter {
 
     private final SHSit plugin;
-    private final SeatManager seats;
+    private final Sessions sessions;
     private final SitListener listener;
 
-    SitCommand(SHSit plugin, SeatManager seats, SitListener listener) {
+    SitCommand(SHSit plugin, Sessions sessions, SitListener listener) {
         this.plugin = plugin;
-        this.seats = seats;
+        this.sessions = sessions;
         this.listener = listener;
     }
 
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label,
                              @NotNull String[] args) {
-        if (command.getName().equalsIgnoreCase("shsit")) {
+        String name = command.getName().toLowerCase();
+        if (name.equals("shsit")) {
             return admin(sender, args);
+        }
+        Kind kind = Kind.byId(name);
+        if (kind == null) {
+            return false;
         }
         if (!(sender instanceof Player player)) {
             sender.sendMessage("Commande réservée aux joueurs.");
             return true;
         }
-        if (!player.hasPermission("shsit.command")) {
+        if (kind == Kind.SIT && args.length == 1 && args[0].equalsIgnoreCase("playertoggle")) {
+            send(player, sessions.togglePlayerSit(player) ? "playertoggle-on" : "playertoggle-off");
+            return true;
+        }
+        if (!player.hasPermission("shsit.command." + kind.id)) {
             send(player, "no-permission");
             return true;
         }
-        if (seats.isSitting(player)) {
-            seats.standUp(player);
-            return true;
+        Sessions.Session current = sessions.of(player);
+        if (current != null) {
+            sessions.end(player, true);
+            if (current.kind == kind) {
+                return true;
+            }
         }
 
-        // On s'assoit là où l'on se tient : le sol doit être juste sous les pieds.
+        // La pose se fait là où l'on se tient : le sol doit être juste sous les pieds.
         Location feet = player.getLocation();
         Block floor = feet.getWorld().getBlockAt(feet.getBlockX(), (int) Math.floor(feet.getY() - 0.05), feet.getBlockZ());
-        double top = Space.topOf(floor);
-        if (Double.isNaN(top) || Math.abs(floor.getY() + top - feet.getY()) > 0.1) {
+        double top = Space.surfaceAt(floor, feet.getY());
+        if (Double.isNaN(top)) {
             send(player, "not-on-ground");
             return true;
         }
-        Location seat = new Location(feet.getWorld(), feet.getX(), floor.getY() + top, feet.getZ());
-        listener.warn(player, seats.sit(player, floor, seat, null, null));
+        Location seat = new Location(feet.getWorld(), feet.getX(), floor.getY() + top, feet.getZ(), feet.getYaw(), feet.getPitch());
+        Sessions.Result result = switch (kind) {
+            case SIT, SPIN -> sessions.startSeat(player, kind, floor, seat, null, null);
+            case LAY -> sessions.startLay(player, floor, seat);
+            default -> sessions.startCrawl(player, kind);
+        };
+        listener.warn(player, result);
         return true;
     }
 
@@ -78,8 +95,14 @@ final class SitCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias,
                                       @NotNull String[] args) {
-        if (command.getName().equalsIgnoreCase("shsit") && args.length == 1 && sender.hasPermission("shsit.admin")) {
+        if (args.length != 1) {
+            return List.of();
+        }
+        if (command.getName().equalsIgnoreCase("shsit") && sender.hasPermission("shsit.admin")) {
             return List.of("reload");
+        }
+        if (command.getName().equalsIgnoreCase("sit")) {
+            return List.of("playertoggle");
         }
         return List.of();
     }

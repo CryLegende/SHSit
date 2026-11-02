@@ -1,14 +1,12 @@
 package org.Cry_Legende.sHSit;
 
-import io.papermc.paper.event.entity.EntityBreakByEntityEvent;
-import io.papermc.paper.event.entity.EntityBreakEvent;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.type.Stairs;
-import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -16,14 +14,12 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDismountEvent;
-import org.bukkit.event.entity.EntityMountEvent;
-import org.bukkit.event.entity.EntityRemoveEvent;
-import org.bukkit.event.entity.ItemSpawnEvent;
+import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
-import org.bukkit.event.world.EntitiesLoadEvent;
+import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.util.Vector;
 
@@ -31,25 +27,31 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-/** Événements : s'asseoir d'un clic, et tout ce qui protège le coussin (casse, vol, mort du siège). */
+/** Événements : s'asseoir d'un clic (sur un bloc ou sur un joueur) et tout ce qui met fin à une pose. */
 final class SitListener implements Listener {
 
-    /** Un coussin du plugin vient d'être détruit par autre chose que le plugin : son objet ne doit pas tomber. */
-    private record DropGuard(UUID world, Vector where, int tick) {
-    }
-
     private final SHSit plugin;
-    private final SeatManager seats;
+    private final Sessions sessions;
     private final Map<UUID, Long> lastWarning = new HashMap<>();
-    private DropGuard dropGuard;
 
-    SitListener(SHSit plugin, SeatManager seats) {
+    SitListener(SHSit plugin, Sessions sessions) {
         this.plugin = plugin;
-        this.seats = seats;
+        this.sessions = sessions;
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    /**
+     * Clic droit sur un bloc de la liste. L'événement est traité même si un autre plugin l'a annulé
+     * (WorldGuard le fait avec « interact: deny »), mais seulement quand la région dit explicitement
+     * « sit: allow » : sans cela une région protégée ne pourrait jamais autoriser les bancs.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onInteract(PlayerInteractEvent event) {
+        Player player = event.getPlayer();
+        Sessions.Session own = sessions.of(player);
+        if (own != null && (own.kind == Kind.LAY || own.kind == Kind.SPIN)) {
+            event.setCancelled(true);
+            return;
+        }
         if (event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getHand() != EquipmentSlot.HAND) {
             return;
         }
@@ -58,18 +60,16 @@ final class SitListener implements Listener {
         if (block == null || !settings.seatBlocks.contains(block.getType())) {
             return;
         }
-        Player player = event.getPlayer();
         if (settings.debug) {
             plugin.getLogger().info(player.getName() + " -> clic sur " + block.getType() + " " + block.getX() + " "
-                    + block.getY() + " " + block.getZ() + " (face " + event.getBlockFace() + ")");
+                    + block.getY() + " " + block.getZ());
         }
         if (player.isSneaking() || !player.hasPermission("shsit.sit")) {
             skipped(player, player.isSneaking() ? "accroupi" : "permission shsit.sit manquante");
             return;
         }
-        if (settings.emptyHand && (!player.getInventory().getItemInMainHand().isEmpty()
-                || !player.getInventory().getItemInOffHand().isEmpty())) {
-            skipped(player, "main non vide");
+        if (settings.emptyHand && handsBusy(player)) {
+            skipped(player, "mains non vides");
             return;
         }
         double surface = Space.seatSurface(block);
@@ -78,16 +78,56 @@ final class SitListener implements Listener {
             return;
         }
         Location seat = block.getLocation().add(0.5, surface, 0.5);
+        if (event.useInteractedBlock() == Event.Result.DENY
+                && (plugin.regions() == null || !plugin.regions().explicitlyAllows(seat, Kind.SIT))) {
+            skipped(player, "clic annulé par un autre plugin");
+            return;
+        }
         Float yaw = settings.faceOpenSide && block.getBlockData() instanceof Stairs stairs
                 ? yawOf(stairs.getFacing().getOppositeFace()) : null;
         Vector click = event.getInteractionPoint() == null ? null : event.getInteractionPoint().toVector();
 
-        SeatManager.Result result = seats.sit(player, block, seat, click, yaw);
-        if (result == SeatManager.Result.OK) {
-            event.setCancelled(true);
+        Sessions.Result result = sessions.startSeat(player, Kind.SIT, block, seat, click, yaw);
+        if (result == Sessions.Result.OK) {
+            event.setUseInteractedBlock(Event.Result.DENY);
+            event.setUseItemInHand(Event.Result.DENY);
         } else {
             warn(player, result);
         }
+    }
+
+    /** Clic droit sur un joueur, les mains vides : on s'assoit sur sa tête. */
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onClickPlayer(PlayerInteractEntityEvent event) {
+        // PlayerInteractAtEntityEvent est une sous-classe : les deux événements passent ici, le second est refusé (déjà monté)
+        if (event.getHand() != EquipmentSlot.HAND
+                || !(event.getRightClicked() instanceof Player target) || target.hasMetadata("NPC")) {
+            return;
+        }
+        Player rider = event.getPlayer();
+        if (rider.isSneaking() || !rider.hasPermission("shsit.playersit")
+                || (plugin.settings().emptyHand && handsBusy(rider))) {
+            skipped(rider, "clic sur " + target.getName() + " ignoré (accroupi " + rider.isSneaking() + ", permission "
+                    + rider.hasPermission("shsit.playersit") + ", mains occupées " + handsBusy(rider) + " : "
+                    + rider.getInventory().getItemInMainHand().getType() + " / " + rider.getInventory().getItemInOffHand().getType() + ")");
+            return;
+        }
+        // Comme pour les blocs : un clic annulé (WorldGuard « interact: deny ») ne compte que si la région dit « playersit: allow »
+        if (event.isCancelled() && (plugin.regions() == null
+                || !plugin.regions().explicitlyAllows(target.getLocation(), Kind.PLAYERSIT))) {
+            skipped(rider, "clic sur " + target.getName() + " annulé par un autre plugin");
+            return;
+        }
+        Sessions.Result result = sessions.startPlayerSit(rider, target);
+        if (result == Sessions.Result.OK) {
+            event.setCancelled(true);
+        } else {
+            warn(rider, result);
+        }
+    }
+
+    private static boolean handsBusy(Player player) {
+        return !player.getInventory().getItemInMainHand().isEmpty() || !player.getInventory().getItemInOffHand().isEmpty();
     }
 
     private void skipped(Player player, String reason) {
@@ -97,7 +137,7 @@ final class SitListener implements Listener {
     }
 
     /** Envoie le message du refus, au plus une fois toutes les 1,5 s par joueur. */
-    void warn(Player player, SeatManager.Result result) {
+    void warn(Player player, Sessions.Result result) {
         if (result.message == null || plugin.settings().message(result.message) == null) {
             return;
         }
@@ -119,112 +159,63 @@ final class SitListener implements Listener {
         };
     }
 
-    // ------------------------------------------------------------------ départ du siège
+    // ------------------------------------------------------------------ fin de pose
+
+    /** Accroupi : le joueur pose se relève, et ceux qui sont assis sur sa tête descendent. */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onSneak(PlayerToggleSneakEvent event) {
+        if (!event.isSneaking()) {
+            return;
+        }
+        Player player = event.getPlayer();
+        if (sessions.has(player)) {
+            sessions.end(player, true);
+        }
+        if (plugin.settings().ejectOnSneak && !player.getPassengers().isEmpty()) {
+            sessions.ejectRiders(player);
+        }
+    }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onDismount(EntityDismountEvent event) {
-        if (event.getEntity() instanceof Player player && seats.isSeatCushion(event.getDismounted())) {
-            seats.dismounted(player, event.getDismounted());
+        if (event.getEntity() instanceof Player player) {
+            sessions.dismounted(player);
         }
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onTeleport(PlayerTeleportEvent event) {
-        seats.teleportStarted(event.getPlayer());
+        Player player = event.getPlayer();
+        sessions.teleported(player, event.getFrom(), event.getTo());
+        if (!player.getPassengers().isEmpty()) {
+            sessions.ejectRiders(player);
+        }
     }
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        try {
-            seats.standUp(event.getPlayer());
-        } finally {
-            seats.forget(event.getPlayer());
-            lastWarning.remove(event.getPlayer().getUniqueId());
-        }
+        Player player = event.getPlayer();
+        sessions.ejectRiders(player);
+        sessions.end(player, false);
+        sessions.forget(player);
+        lastWarning.remove(player.getUniqueId());
+    }
+
+    @EventHandler
+    public void onDeath(PlayerDeathEvent event) {
+        sessions.end(event.getEntity(), false);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBreak(BlockBreakEvent event) {
-        seats.supportBroken(event.getBlock());
+        sessions.supportBroken(event.getBlock());
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onDamaged(EntityDamageEvent event) {
         if (plugin.settings().standUpOnDamage && event.getFinalDamage() > 0.0
-                && event.getEntity() instanceof Player player && seats.isSitting(player)) {
-            Bukkit.getScheduler().runTask(plugin, () -> seats.standUp(player));
+                && event.getEntity() instanceof Player player && sessions.has(player)) {
+            Bukkit.getScheduler().runTask(plugin, () -> sessions.end(player, true));
         }
-    }
-
-    // ------------------------------------------------------------------ protection du coussin
-
-    /** Seul le plugin monte un joueur sur un de ses coussins. */
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onMount(EntityMountEvent event) {
-        if (seats.isSeatCushion(event.getMount()) && !seats.isPendingMount(event.getMount())) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onInteractCushion(PlayerInteractEntityEvent event) {
-        if (seats.isSeatCushion(event.getRightClicked())) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onHurtCushion(EntityDamageEvent event) {
-        if (seats.isSeatCushion(event.getEntity())) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onBreakCushion(EntityBreakEvent event) {
-        if (seats.isSeatCushion(event.getEntity())) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onBreakCushionByEntity(EntityBreakByEntityEvent event) {
-        if (seats.isSeatCushion(event.getEntity())) {
-            event.setCancelled(true);
-        }
-    }
-
-    /**
-     * Filet de sécurité : si un coussin du plugin est détruit par autre chose que le plugin (la
-     * foudre le tue sans passer par un événement annulable), l'objet qu'il lâche est supprimé.
-     */
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onCushionRemoved(EntityRemoveEvent event) {
-        Entity entity = event.getEntity();
-        if (event.getCause() == EntityRemoveEvent.Cause.PLUGIN || event.getCause() == EntityRemoveEvent.Cause.UNLOAD
-                || event.getCause() == EntityRemoveEvent.Cause.DESPAWN || !seats.isSeatCushion(entity)) {
-            return;
-        }
-        dropGuard = new DropGuard(entity.getWorld().getUID(), entity.getLocation().toVector(), Bukkit.getCurrentTick());
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onItemSpawn(ItemSpawnEvent event) {
-        DropGuard guard = dropGuard;
-        if (guard == null || Bukkit.getCurrentTick() - guard.tick() > 2) {
-            return;
-        }
-        Location where = event.getLocation();
-        if (where.getWorld().getUID().equals(guard.world())
-                && where.toVector().distanceSquared(guard.where()) < 4.0
-                && event.getEntity().getItemStack().getType().name().endsWith("_CUSHION")) {
-            event.setCancelled(true);
-        }
-    }
-
-    /** Un coussin du plugin retrouvé dans un chunk chargé n'a plus de joueur : on le retire. */
-    @EventHandler
-    public void onEntitiesLoad(EntitiesLoadEvent event) {
-        seats.sweep(event.getEntities().stream().map(entity -> (Entity) entity).toList());
     }
 }

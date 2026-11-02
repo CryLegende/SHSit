@@ -32,6 +32,9 @@ final class Settings {
     final boolean standUpOnDamage;
     final boolean faceOpenSide;
     final boolean debug;
+    final Set<Kind> enabled;
+    final int maxStack;
+    final boolean ejectOnSneak;
     final Set<Material> seatBlocks;
     final boolean islandCoop;
     final boolean islandVisitors;
@@ -46,6 +49,14 @@ final class Settings {
         standUpOnDamage = config.getBoolean("settings.stand-up-on-damage", true);
         faceOpenSide = config.getBoolean("settings.face-open-side", true);
         debug = config.getBoolean("settings.debug", false);
+        enabled = EnumSet.noneOf(Kind.class);
+        for (Kind kind : Kind.values()) {
+            if (config.getBoolean("features." + kind.id, true)) {
+                enabled.add(kind);
+            }
+        }
+        maxStack = Math.max(1, config.getInt("playersit.max-stack", 3));
+        ejectOnSneak = config.getBoolean("playersit.eject-on-sneak", true);
         seatBlocks = parseBlocks(plugin, config.getStringList("blocks"));
         islandCoop = config.getBoolean("island.coop", true);
         islandVisitors = config.getBoolean("island.visitors", false);

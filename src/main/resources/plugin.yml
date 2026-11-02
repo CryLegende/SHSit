@@ -3,12 +3,25 @@ version: '${project.version}'
 main: org.Cry_Legende.sHSit.SHSit
 api-version: '1.21'
 author: Cry_Legende
-description: S'asseoir sur un coussin Minecraft 26.3 (remplace GSit).
+description: S'asseoir, s'allonger, ramper, tournoyer et s'asseoir sur la tête des autres, en paquets (remplace GSit).
+depend: [packetevents]
 softdepend: [WorldGuard, SuperiorSkyblock2]
 
 commands:
   sit:
-    description: S'asseoir sur place, ou se relever.
+    description: S'asseoir sur place, ou se relever. « /sit playertoggle » interdit ou autorise qu'on s'asseye sur vous.
+    usage: /<command> [playertoggle]
+  lay:
+    description: S'allonger, ou se relever.
+    usage: /<command>
+  spin:
+    description: Tournoyer sur place, ou s'arrêter.
+    usage: /<command>
+  bellyflop:
+    description: S'allonger sur le ventre, ou se relever.
+    usage: /<command>
+  crawl:
+    description: Ramper, ou se relever.
     usage: /<command>
   shsit:
     description: Administration de SHSit.
@@ -18,11 +31,26 @@ permissions:
   shsit.sit:
     description: S'asseoir d'un clic droit sur un escalier, une dalle ou un tapis.
     default: true
-  shsit.command:
-    description: Utiliser /sit pour s'asseoir sur place.
+  shsit.playersit:
+    description: S'asseoir d'un clic droit sur la tête d'un joueur.
+    default: true
+  shsit.command.sit:
+    description: Utiliser /sit.
+    default: op
+  shsit.command.lay:
+    description: Utiliser /lay.
+    default: op
+  shsit.command.spin:
+    description: Utiliser /spin.
+    default: op
+  shsit.command.bellyflop:
+    description: Utiliser /bellyflop.
+    default: op
+  shsit.command.crawl:
+    description: Utiliser /crawl.
     default: op
   shsit.bypass:
-    description: S'asseoir malgré les protections d'île et de région.
+    description: Se poser malgré les protections d'île et de région.
     default: op
   shsit.admin:
     description: Recharger la configuration.

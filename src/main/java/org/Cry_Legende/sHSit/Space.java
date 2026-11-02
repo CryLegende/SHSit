@@ -20,12 +20,6 @@ final class Space {
     /** Marge qui évite de compter un simple contact de face comme une collision. */
     private static final double EPSILON = 0.001;
 
-    /**
-     * Hauteur des yeux d'un joueur assis, au-dessus de la surface sur laquelle repose le coussin
-     * (mesuré sur 26.3 : les pieds du joueur sont 0,35 sous l'origine du coussin, les yeux à 1,62 des pieds).
-     */
-    static final double EYE_ABOVE_SEAT = 1.27;
-
     private Space() {
     }
 
@@ -41,8 +35,21 @@ final class Space {
         return top;
     }
 
+    /** Hauteur (0 à 1) du dessus du bloc qui porte un joueur dont les pieds sont à cette hauteur, ou NaN. */
+    static double surfaceAt(Block block, double feetY) {
+        if (block.isPassable()) {
+            return Double.NaN;
+        }
+        for (BoundingBox box : block.getCollisionShape().getBoundingBoxes()) {
+            if (Math.abs(block.getY() + box.getMaxY() - feetY) <= 0.1) {
+                return box.getMaxY();
+            }
+        }
+        return Double.NaN;
+    }
+
     /**
-     * Hauteur de la surface où se pose le coussin quand on s'assoit sur ce bloc, ou NaN si le bloc
+     * Hauteur de la surface où se posent les fesses quand on s'assoit sur ce bloc, ou NaN si le bloc
      * ne convient pas : seule la moitié basse des escaliers et des dalles sert de siège.
      */
     static double seatSurface(Block block) {
@@ -95,10 +102,13 @@ final class Space {
         return !collides(world, body) && collides(world, ground);
     }
 
-    /** Vrai si la tête d'un joueur assis sur cette surface ne touche aucun bloc ni liquide. */
-    static boolean roomAbove(Location seat) {
+    /**
+     * Vrai si la tête du joueur, à cette hauteur au-dessus de la surface du siège, ne touche aucun bloc
+     * ni liquide (assis : 1,02 ; debout au sol : 1,62).
+     */
+    static boolean roomAbove(Location seat, double eyeAbove) {
         World world = seat.getWorld();
-        double eyeY = seat.getY() + EYE_ABOVE_SEAT;
+        double eyeY = seat.getY() + eyeAbove;
         double half = WIDTH / 2.0 - EPSILON;
         BoundingBox head = new BoundingBox(seat.getX() - half, eyeY - 0.15, seat.getZ() - half,
                 seat.getX() + half, eyeY + 0.2, seat.getZ() + half);

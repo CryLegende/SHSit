@@ -1,35 +1,55 @@
-# SHSit - s'asseoir sur un coussin (remplace GSit)
+# SHSit - s'asseoir, s'allonger, ramper, tournoyer, s'asseoir sur un joueur (remplace GSit)
 #
-# Le joueur s'assoit sur une entité coussin de Minecraft 26.3, posée par le plugin et retirée dès
-# qu'il se relève. Le coussin ne peut ni être cassé, ni lâcher d'objet, ni être partagé.
-# Clic droit à la main vide sur un bloc de la liste ci-dessous, ou /sit pour s'asseoir sur place.
-# Se relever : accroupi (maj), ou /sit une seconde fois.
+# Rien n'est posé dans le monde : le siège est un faux véhicule invisible envoyé par paquets aux joueurs
+# qui voient la scène (packetevents), les fesses au niveau du bloc. Se relever : accroupi (maj), ou en
+# retapant la commande.
+#   - clic droit les deux mains vides sur un bloc de la liste blocks : s'asseoir
+#   - clic droit les deux mains vides sur un joueur : s'asseoir sur sa tête
+#   - /sit /lay /spin /bellyflop /crawl : à l'endroit où l'on se tient (permissions shsit.command.<nom>)
+#   - /sit playertoggle : interdit ou autorise les autres à s'asseoir sur vous
 #
-# Région WorldGuard : le flag « sit » (allow / deny) autorise ou interdit de s'asseoir dans la région.
-# Sans flag, il faut pouvoir construire dans la région. Les îles SuperiorSkyblock2 sont réservées
-# aux membres (et aux coop si island.coop est actif), voir island plus bas.
+# WorldGuard : un flag par fonction, en allow ou deny sur une région (/rg flag <région> sit deny).
+#   sit        : s'asseoir (clic et /sit)
+#   pose       : /lay, /bellyflop, /spin
+#   crawl      : /crawl
+#   playersit  : s'asseoir sur un joueur
+# Sans flag, il faut pouvoir construire dans la région. Aucune monture n'est créée pour s'asseoir, donc les
+# flags ride et interact ne gênent pas ; un flag allow rend même possible de s'asseoir dans une région
+# protégée par interact: deny. Les îles SuperiorSkyblock2 sont réservées aux membres (voir island).
 
 settings:
-  # Mondes où l'on peut s'asseoir (liste vide = tous les mondes)
+  # Mondes où l'on peut se poser (liste vide = tous les mondes)
   worlds:
     - spawn
     - SuperiorWorld
     - Christmas
-  # Couleur du coussin : WHITE, ORANGE, MAGENTA, LIGHT_BLUE, YELLOW, LIME, PINK, GRAY,
-  # LIGHT_GRAY, CYAN, PURPLE, BLUE, BROWN, GREEN, RED, BLACK
-  cushion-color: WHITE
-  # Secondes minimum entre deux changements d'état (s'asseoir) d'un même joueur
+  # Secondes minimum entre deux poses d'un même joueur
   cooldown: 1.0
   # Les deux mains vides obligatoires pour s'asseoir d'un clic droit (sinon le clic pose le bloc tenu)
   empty-hand: true
-  # Distance maximale entre les yeux du joueur et la place choisie (en blocs)
+  # Distance maximale entre les yeux du joueur et la place ou le joueur visé (en blocs)
   max-distance: 4.5
   # Le joueur se relève quand il subit des dégâts
   stand-up-on-damage: true
   # Sur un escalier, le joueur est tourné vers le côté ouvert
   face-open-side: true
-  # Écrit dans la console la raison de chaque refus (pour comprendre pourquoi un joueur ne s'assoit pas)
+  # Écrit dans la console la raison de chaque refus (pour comprendre pourquoi un joueur ne se pose pas)
   debug: false
+
+# Fonctions actives
+features:
+  sit: true
+  lay: true
+  spin: true
+  bellyflop: true
+  crawl: true
+  playersit: true
+
+playersit:
+  # Nombre maximal de joueurs empilés sur la même tête
+  max-stack: 3
+  # Les joueurs assis sur une tête descendent quand le porteur s'accroupit
+  eject-on-sneak: true
 
 # Blocs sur lesquels un clic droit fait s'asseoir : un bloc (minecraft:moss_carpet) ou un tag (#minecraft:stairs).
 # Seule la moitié basse des escaliers et des dalles est utilisable.
@@ -40,21 +60,25 @@ blocks:
   - minecraft:moss_carpet
   - minecraft:pale_moss_carpet
 
-# Îles SuperiorSkyblock2 : les membres de l'île peuvent toujours s'asseoir
+# Îles SuperiorSkyblock2 : les membres de l'île peuvent toujours se poser (l'île du spawn est publique)
 island:
-  # Les joueurs coop de l'île peuvent s'asseoir
+  # Les joueurs coop de l'île peuvent se poser
   coop: true
-  # Les visiteurs peuvent s'asseoir
+  # Les visiteurs peuvent se poser
   visitors: false
 
 # Messages (codes & et couleurs hex &#RRGGBB)
 messages:
-  world: '&7&l« &c&lSH &8&l» &7On ne peut pas s''asseoir &cdans ce monde&7.'
-  island: '&7&l« &c&lSH &8&l» &7Vous ne pouvez pas vous asseoir &csur cette île&7.'
-  region: '&7&l« &c&lSH &8&l» &7Vous ne pouvez pas vous asseoir &cici&7.'
+  world: '&7&l« &c&lSH &8&l» &7On ne peut pas se poser &cdans ce monde&7.'
+  island: '&7&l« &c&lSH &8&l» &7Vous ne pouvez pas vous poser &csur cette île&7.'
+  region: '&7&l« &c&lSH &8&l» &7Vous ne pouvez pas vous poser &cici&7.'
   occupied: '&7&l« &c&lSH &8&l» &7Cette place est &cdéjà occupée&7.'
-  no-room: '&7&l« &c&lSH &8&l» &7Il n''y a &cpas assez de place &7pour s''asseoir ici.'
-  not-on-ground: '&7&l« &c&lSH &8&l» &7Vous devez être &csur le sol &7pour vous asseoir.'
+  no-room: '&7&l« &c&lSH &8&l» &7Il n''y a &cpas assez de place &7ici.'
+  not-on-ground: '&7&l« &c&lSH &8&l» &7Vous devez être &csur le sol &7pour faire ça.'
+  target-refuses: '&7&l« &c&lSH &8&l» &7Ce joueur &cne veut pas &7qu''on s''asseye sur lui.'
+  stack-full: '&7&l« &c&lSH &8&l» &7Il y a &cdéjà trop de monde &7sur cette tête.'
   no-permission: '&7&l« &c&lSH &8&l» &7Cette commande est réservée aux joueurs &fVIP&7.'
+  playertoggle-on: '&7&l« &a&lSH &8&l» &7On &apeut &7maintenant s''asseoir sur vous.'
+  playertoggle-off: '&7&l« &e&lSH &8&l» &7On &cne peut plus &7s''asseoir sur vous.'
   reloaded: '&7&l« &a&lSH &8&l» &7Configuration &arechargée&7.'
   usage: '&7&l« &e&lSH &8&l» &7Utilisation : &e/shsit reload&7.'
