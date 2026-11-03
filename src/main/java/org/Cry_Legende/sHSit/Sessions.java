@@ -105,6 +105,8 @@ final class Sessions {
     private static final double[] LEVELS = {0.0, 0.5, 1.0, 2.0};
     /** Hauteur de la tête assise au-dessus de la surface du siège (pieds à 0,6 sous la surface, yeux à 1,62 des pieds). */
     private static final double SEAT_DROP = 0.6;
+    /** Décalage de l'entité couchée vers la tête par rapport au centre du corps (voir attemptLay). */
+    private static final double HEAD_SHIFT = 0.6;
 
     private final SHSit plugin;
     private final RegionGuard regions;
@@ -277,8 +279,10 @@ final class Sessions {
         }
 
         Session session = new Session(player, Kind.LAY);
-        Location rest = new Location(world, surface.getX(), surface.getY() + 0.1125, surface.getZ(), feet.getYaw(),
-                feet.getPitch());
+        // Le moteur de rendu vanilla dessine le corps couché de 1,52 bloc côté pieds à 0,28 côté tête de la position
+        // de l'entité : pour que le corps soit centré sur la place, l'entité se tient 0,6 bloc côté tête (derrière le regard).
+        Location rest = new Location(world, surface.getX() - direction.getModX() * HEAD_SHIFT, surface.getY() + 0.1125,
+                surface.getZ() - direction.getModZ() * HEAD_SHIFT, feet.getYaw(), feet.getPitch());
         if (rest.distanceSquared(feet) > 0.0004) {
             teleportSelf(player, rest);
         }
@@ -662,8 +666,11 @@ final class Sessions {
                 }
             }
             case LAY -> {
-                viewer.sendBlockChange(session.bed, session.bedFake);
-                Packets.lay(viewer, player, session.bed);
+                // Jamais au joueur couché : son client irait se poser sur le lit (au fond du monde) et s'assombrirait
+                if (!viewer.getUniqueId().equals(player.getUniqueId())) {
+                    viewer.sendBlockChange(session.bed, session.bedFake);
+                    Packets.lay(viewer, player, session.bed, session.rest);
+                }
             }
             default -> {
             }
@@ -681,8 +688,10 @@ final class Sessions {
                 }
             }
             case LAY -> {
-                viewer.sendBlockChange(session.bed, session.bedReal);
-                Packets.restore(viewer, player);
+                if (!viewer.getUniqueId().equals(player.getUniqueId())) {
+                    viewer.sendBlockChange(session.bed, session.bedReal);
+                    Packets.restore(viewer, player);
+                }
             }
             default -> {
             }
@@ -698,9 +707,9 @@ final class Sessions {
             }
             if (session.kind == Kind.SPIN) {
                 Packets.spin(viewer, session.player);
-            } else if (session.kind == Kind.LAY) {
-                viewer.sendBlockChange(session.bed, session.bedFake);
-                Packets.lay(viewer, session.player, session.bed);
+            } else if (session.kind == Kind.LAY && !id.equals(session.player.getUniqueId())) {
+                // la pose seule : renvoyer la position de sommeil ferait sauter l'entité au fond du monde puis la ramènerait
+                Packets.layPose(viewer, session.player);
             }
         }
     }

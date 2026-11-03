@@ -9,6 +9,7 @@ import com.github.retrooper.packetevents.util.Vector3d;
 import com.github.retrooper.packetevents.util.Vector3i;
 import com.github.retrooper.packetevents.wrapper.PacketWrapper;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerDestroyEntities;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityTeleport;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityMetadata;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSetPassengers;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSpawnEntity;
@@ -70,12 +71,26 @@ final class Packets {
                 new EntityData<>(LIVING_FLAGS, EntityDataTypes.BYTE, SPIN_ATTACK_FLAG))));
     }
 
-    /** Joueur couché : pose « endormi » dont le lit (fantôme) se trouve en bas du monde. */
-    static void lay(Player viewer, Player lying, Location bed) {
+    /**
+     * Joueur couché vu par un SPECTATEUR (jamais par le joueur lui-même) : pose « endormi » dont le lit
+     * (fantôme) se trouve en bas du monde. Le client vanilla téléporte l'entité sur son lit dès qu'il reçoit
+     * la position de sommeil (LivingEntity#setPosToBed) : le paquet de téléportation qui suit la remet là
+     * où le serveur la connaît. Envoyée au joueur couché, cette position le ferait tomber au fond du monde
+     * (le client envoie sa nouvelle position au serveur) et assombrirait son écran comme dans un vrai lit.
+     */
+    static void lay(Player viewer, Player lying, Location bed, Location at) {
         send(viewer, new WrapperPlayServerEntityMetadata(lying.getEntityId(), List.of(
                 new EntityData<>(POSE, EntityDataTypes.ENTITY_POSE, EntityPose.SLEEPING),
                 new EntityData<>(SLEEPING_POS, EntityDataTypes.OPTIONAL_BLOCK_POSITION,
                         Optional.of(new Vector3i(bed.getBlockX(), bed.getBlockY(), bed.getBlockZ()))))));
+        send(viewer, new WrapperPlayServerEntityTeleport(lying.getEntityId(),
+                new Vector3d(at.getX(), at.getY(), at.getZ()), at.getYaw(), at.getPitch(), true));
+    }
+
+    /** Remet seulement la pose « endormi » (la position de sommeil, elle, ne bouge pas : la renvoyer ferait sauter l'entité). */
+    static void layPose(Player viewer, Player lying) {
+        send(viewer, new WrapperPlayServerEntityMetadata(lying.getEntityId(), List.of(
+                new EntityData<>(POSE, EntityDataTypes.ENTITY_POSE, EntityPose.SLEEPING))));
     }
 
     /** Remet la pose réelle du joueur (celle que le serveur connaît) chez ce spectateur. */
