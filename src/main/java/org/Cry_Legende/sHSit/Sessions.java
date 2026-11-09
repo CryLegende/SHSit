@@ -37,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Toutes les poses en cours, une par joueur, et toutes les règles anti-abus (start*). Assis et spin :
@@ -115,8 +116,10 @@ final class Sessions {
     private final NamespacedKey offKey;
     private final NamespacedKey freezeKey;
 
-    private final Map<UUID, Session> byPlayer = new HashMap<>();
-    private final Map<BlockKey, UUID> byBlock = new HashMap<>();
+    // Concurrentes : la mort d'un joueur appelle end() depuis le thread de son monde, en parallèle des autres mondes
+    // (ni clé ni valeur nulle : register() ne pose le bloc que s'il y a un support)
+    private final Map<UUID, Session> byPlayer = new ConcurrentHashMap<>();
+    private final Map<BlockKey, UUID> byBlock = new ConcurrentHashMap<>();
     private final Map<UUID, Long> lastStart = new HashMap<>();
     private final Set<UUID> selfTeleport = new HashSet<>();
     private CrawlHandler crawlHandler;
