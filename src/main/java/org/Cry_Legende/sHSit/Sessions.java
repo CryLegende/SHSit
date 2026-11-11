@@ -138,6 +138,21 @@ final class Sessions {
         return byPlayer.get(player.getUniqueId());
     }
 
+    /** Une pose en cours, pour /shsit list. */
+    record Pose(String player, Kind kind, String world) {
+    }
+
+    /** Les poses en cours, triées par pseudo. Lecture seule. */
+    List<Pose> poses() {
+        List<Pose> poses = new ArrayList<>();
+        for (Session session : byPlayer.values()) {
+            Player player = session.player;
+            poses.add(new Pose(player.getName(), session.kind, player.getWorld().getName()));
+        }
+        poses.sort(Comparator.comparing(Pose::player, String.CASE_INSENSITIVE_ORDER));
+        return poses;
+    }
+
     boolean has(Player player) {
         return byPlayer.containsKey(player.getUniqueId());
     }

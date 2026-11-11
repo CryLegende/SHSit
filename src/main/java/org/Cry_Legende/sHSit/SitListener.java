@@ -138,7 +138,7 @@ final class SitListener implements Listener {
 
     /** Envoie le message du refus, au plus une fois toutes les 1,5 s par joueur. */
     void warn(Player player, Sessions.Result result) {
-        if (result.message == null || plugin.settings().message(result.message) == null) {
+        if (result.message == null || plugin.messages().get(result.message) == null) {
             return;
         }
         long now = System.currentTimeMillis();
@@ -147,7 +147,7 @@ final class SitListener implements Listener {
             return;
         }
         lastWarning.put(player.getUniqueId(), now);
-        player.sendMessage(plugin.settings().message(result.message));
+        player.sendMessage(plugin.messages().get(result.message));
     }
 
     private static float yawOf(BlockFace face) {

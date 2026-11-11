@@ -25,33 +25,55 @@ commands:
     usage: /<command>
   shsit:
     description: Administration de SHSit.
-    usage: /<command> reload
+    usage: /<command> <reload|list|stand>
 
 permissions:
+  shsit.use:
+    description: Utiliser les commandes de pose (/sit, /lay, /spin, /bellyflop, /crawl).
+    default: op
+    children:
+      shsit.use.sit: true
+      shsit.use.lay: true
+      shsit.use.spin: true
+      shsit.use.bellyflop: true
+      shsit.use.crawl: true
+  shsit.use.sit:
+    description: Utiliser /sit.
+    default: op
+  shsit.use.lay:
+    description: Utiliser /lay.
+    default: op
+  shsit.use.spin:
+    description: Utiliser /spin.
+    default: op
+  shsit.use.bellyflop:
+    description: Utiliser /bellyflop.
+    default: op
+  shsit.use.crawl:
+    description: Utiliser /crawl.
+    default: op
   shsit.sit:
     description: S'asseoir d'un clic droit sur un escalier, une dalle ou un tapis.
     default: true
   shsit.playersit:
     description: S'asseoir d'un clic droit sur la tête d'un joueur.
     default: true
-  shsit.command.sit:
-    description: Utiliser /sit.
-    default: op
-  shsit.command.lay:
-    description: Utiliser /lay.
-    default: op
-  shsit.command.spin:
-    description: Utiliser /spin.
-    default: op
-  shsit.command.bellyflop:
-    description: Utiliser /bellyflop.
-    default: op
-  shsit.command.crawl:
-    description: Utiliser /crawl.
-    default: op
   shsit.bypass:
     description: Se poser malgré les protections d'île et de région.
     default: op
   shsit.admin:
-    description: Recharger la configuration.
+    description: Toutes les sous-commandes de /shsit.
+    default: op
+    children:
+      shsit.admin.reload: true
+      shsit.admin.list: true
+      shsit.admin.stand: true
+  shsit.admin.reload:
+    description: /shsit reload, recharge config.yml et messages.yml.
+    default: op
+  shsit.admin.list:
+    description: /shsit list, liste des joueurs posés.
+    default: op
+  shsit.admin.stand:
+    description: /shsit stand, relève un joueur posé.
     default: op

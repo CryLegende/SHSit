@@ -2,7 +2,12 @@ package org.Cry_Legende.sHSit;
 
 import com.github.retrooper.packetevents.PacketEvents;
 import org.bukkit.command.PluginCommand;
+import org.bukkit.configuration.InvalidConfigurationException;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
+
+import java.io.File;
+import java.io.IOException;
 
 /**
  * SHSit : s'asseoir, s'allonger, ramper, tournoyer et s'asseoir sur la tête des autres (remplace GSit).
@@ -12,6 +17,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 public final class SHSit extends JavaPlugin {
 
     private Settings settings;
+    private Messages messages;
     private Sessions sessions;
     private RegionGuard regions;
     private PacketHook hook;
@@ -32,6 +38,14 @@ public final class SHSit extends JavaPlugin {
     public void onEnable() {
         saveDefaultConfig();
         settings = Settings.load(this);
+        // Crée messages.yml au premier démarrage, avec les textes de l'ancienne section messages: de config.yml
+        Messages.prepare(this);
+        try {
+            messages = Messages.load(this);
+        } catch (IOException | InvalidConfigurationException e) {
+            getLogger().warning("messages.yml illisible, textes du jar utilisés : " + e.getMessage());
+            messages = Messages.defaults(this);
+        }
 
         if (getServer().getPluginManager().isPluginEnabled("WorldGuard")) {
             try {
@@ -83,6 +97,10 @@ public final class SHSit extends JavaPlugin {
         return settings;
     }
 
+    Messages messages() {
+        return messages;
+    }
+
     Sessions sessions() {
         return sessions;
     }
@@ -91,8 +109,42 @@ public final class SHSit extends JavaPlugin {
         return regions;
     }
 
-    void reload() {
+    /**
+     * Relit config.yml et messages.yml. Les deux sont lus à part et ne remplacent l'état en cours que s'ils sont
+     * valides ; sinon l'ancienne configuration reste active et l'exception porte le fichier en cause.
+     */
+    void reload() throws ReloadException {
+        readYaml("config.yml");
+        Messages loaded;
+        try {
+            readYaml("messages.yml");
+            loaded = Messages.load(this);
+        } catch (IOException | InvalidConfigurationException e) {
+            throw new ReloadException("messages.yml", e);
+        }
         reloadConfig();
         settings = Settings.load(this);
+        messages = loaded;
+    }
+
+    private YamlConfiguration readYaml(String name) throws ReloadException {
+        YamlConfiguration yaml = new YamlConfiguration();
+        try {
+            yaml.load(new File(getDataFolder(), name));
+        } catch (IOException | InvalidConfigurationException e) {
+            throw new ReloadException(name, e);
+        }
+        return yaml;
+    }
+
+    /** Fichier de configuration illisible pendant un reload. */
+    static final class ReloadException extends Exception {
+
+        final String file;
+
+        ReloadException(String file, Throwable cause) {
+            super(cause.getMessage() == null ? cause.toString() : cause.getMessage().lines().findFirst().orElse(""), cause);
+            this.file = file;
+        }
     }
 }

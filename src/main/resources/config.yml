@@ -5,8 +5,25 @@
 # retapant la commande.
 #   - clic droit les deux mains vides sur un bloc de la liste blocks : s'asseoir
 #   - clic droit les deux mains vides sur un joueur : s'asseoir sur sa tête
-#   - /sit /lay /spin /bellyflop /crawl : à l'endroit où l'on se tient (permissions shsit.command.<nom>)
-#   - /sit playertoggle : interdit ou autorise les autres à s'asseoir sur vous
+#
+# Commandes (aucun alias) :
+#   /sit /lay /spin /bellyflop /crawl   Prendre la pose à l'endroit où l'on se tient, ou se relever en la retapant.
+#   /sit playertoggle                   Interdit ou autorise les autres à s'asseoir sur vous (sans permission).
+#   /shsit reload                       Recharge config.yml et messages.yml ; en cas d'erreur de lecture, l'ancienne
+#                                       configuration reste active.
+#   /shsit list                         Joueurs posés, avec leur pose et leur monde (console possible).
+#   /shsit stand <joueur>               Relève un joueur posé (console possible).
+#
+# Permissions :
+#   shsit.use                           Les cinq commandes de pose (op par défaut).
+#   shsit.use.sit .lay .spin .bellyflop .crawl   Une commande de pose (op par défaut).
+#   shsit.sit                           S'asseoir d'un clic droit sur un bloc (tout le monde par défaut).
+#   shsit.playersit                     S'asseoir d'un clic droit sur un joueur (tout le monde par défaut).
+#   shsit.bypass                        Se poser malgré les protections d'île et de région (op par défaut).
+#   shsit.admin                         Toutes les sous-commandes de /shsit (op par défaut).
+#   shsit.admin.reload .list .stand     Une sous-commande de /shsit (op par défaut).
+#
+# Les textes sont dans messages.yml.
 #
 # WorldGuard : un flag par fonction, en allow ou deny sur une région (/rg flag <région> sit deny).
 #   sit        : s'asseoir (clic et /sit)
@@ -66,19 +83,3 @@ island:
   coop: true
   # Les visiteurs peuvent se poser
   visitors: false
-
-# Messages (codes & et couleurs hex &#RRGGBB)
-messages:
-  world: '&7&l« &c&lSH &8&l» &7On ne peut pas se poser &cdans ce monde&7.'
-  island: '&7&l« &c&lSH &8&l» &7Vous ne pouvez pas vous poser &csur cette île&7.'
-  region: '&7&l« &c&lSH &8&l» &7Vous ne pouvez pas vous poser &cici&7.'
-  occupied: '&7&l« &c&lSH &8&l» &7Cette place est &cdéjà occupée&7.'
-  no-room: '&7&l« &c&lSH &8&l» &7Il n''y a &cpas assez de place &7ici.'
-  not-on-ground: '&7&l« &c&lSH &8&l» &7Vous devez être &csur le sol &7pour faire ça.'
-  target-refuses: '&7&l« &c&lSH &8&l» &7Ce joueur &cne veut pas &7qu''on s''asseye sur lui.'
-  stack-full: '&7&l« &c&lSH &8&l» &7Il y a &cdéjà trop de monde &7sur cette tête.'
-  no-permission: '&7&l« &c&lSH &8&l» &7Cette commande est réservée aux joueurs &fVIP&7.'
-  playertoggle-on: '&7&l« &a&lSH &8&l» &7On &apeut &7maintenant s''asseoir sur vous.'
-  playertoggle-off: '&7&l« &e&lSH &8&l» &7On &cne peut plus &7s''asseoir sur vous.'
-  reloaded: '&7&l« &a&lSH &8&l» &7Configuration &arechargée&7.'
-  usage: '&7&l« &e&lSH &8&l» &7Utilisation : &e/shsit reload&7.'

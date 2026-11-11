@@ -1,0 +1,37 @@
+# Messages de SHSit. Codes & et couleurs hex &#RRGGBB. Un message vide ("") n'est pas envoyé.
+#
+# Placeholders :
+#   {commands}   sous-commandes de /shsit que l'expéditeur peut utiliser
+#   {file}       fichier illisible (reload-failed)
+#   {error}      erreur de lecture du fichier (reload-failed)
+#   {player}     pseudo du joueur
+#   {pose}       pose en cours (sit, lay, spin, bellyflop, crawl, playersit)
+#   {world}      monde du joueur posé
+#   {count}      nombre de joueurs posés
+
+# Refus de pose
+world: '&7&l« &c&lSH &8&l» &7On ne peut pas se poser &cdans ce monde&7.'
+island: '&7&l« &c&lSH &8&l» &7Vous ne pouvez pas vous poser &csur cette île&7.'
+region: '&7&l« &c&lSH &8&l» &7Vous ne pouvez pas vous poser &cici&7.'
+occupied: '&7&l« &c&lSH &8&l» &7Cette place est &cdéjà occupée&7.'
+no-room: '&7&l« &c&lSH &8&l» &7Il n''y a &cpas assez de place &7ici.'
+not-on-ground: '&7&l« &c&lSH &8&l» &7Vous devez être &csur le sol &7pour faire ça.'
+target-refuses: '&7&l« &c&lSH &8&l» &7Ce joueur &cne veut pas &7qu''on s''asseye sur lui.'
+stack-full: '&7&l« &c&lSH &8&l» &7Il y a &cdéjà trop de monde &7sur cette tête.'
+no-permission: '&7&l« &c&lSH &8&l» &7Cette commande est réservée aux joueurs &fVIP&7.'
+
+# /sit playertoggle
+playertoggle-on: '&7&l« &a&lSH &8&l» &7On &apeut &7maintenant s''asseoir sur vous.'
+playertoggle-off: '&7&l« &e&lSH &8&l» &7On &cne peut plus &7s''asseoir sur vous.'
+
+# /shsit
+usage-admin: '&7&l« &e&lSH &8&l» &7Utilisation : &e/shsit <{commands}>&7.'
+reloaded: '&7&l« &a&lSH &8&l» &7Configuration &arechargée&7.'
+reload-failed: '&7&l« &c&lSH &8&l» &7Rechargement &cimpossible&7, &c{file} &7illisible : &c{error}&7. L''ancienne configuration reste active.'
+players-only: '&7&l« &c&lSH &8&l» &7Cette commande est réservée aux &cjoueurs&7.'
+player-not-found: '&7&l« &c&lSH &8&l» &7Joueur &c{player} &7introuvable.'
+list-header: '&7&l« &e&lSH &8&l» &7Joueurs posés : &e{count}&7.'
+list-line: '&8• &e{player} &7: &f{pose} &8({world})'
+list-empty: '&7&l« &e&lSH &8&l» &7Personne n''est posé en ce moment.'
+stand-done: '&7&l« &a&lSH &8&l» &e{player} &7a été &arelevé&7.'
+stand-none: '&7&l« &e&lSH &8&l» &e{player} &7n''est dans &caucune pose&7.'

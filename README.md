@@ -18,11 +18,11 @@ Rien n'est posé dans le monde : le siège est un **faux véhicule invisible env
 
 | Fonction | Comment | Permission |
 |---|---|---|
-| **Assis** | clic droit les deux mains vides sur un escalier, une dalle ou un tapis (liste configurable), ou `/sit` | clic : `shsit.sit` (tous), `/sit` : `shsit.command.sit` |
-| **Couché** | `/lay` | `shsit.command.lay` |
-| **Spin** | `/spin` (pose de trident) | `shsit.command.spin` |
-| **Ventre** | `/bellyflop` (à plat ventre, immobile) | `shsit.command.bellyflop` |
-| **Ramper** | `/crawl` | `shsit.command.crawl` |
+| **Assis** | clic droit les deux mains vides sur un escalier, une dalle ou un tapis (liste configurable), ou `/sit` | clic : `shsit.sit` (tous), `/sit` : `shsit.use.sit` |
+| **Couché** | `/lay` | `shsit.use.lay` |
+| **Spin** | `/spin` (pose de trident) | `shsit.use.spin` |
+| **Ventre** | `/bellyflop` (à plat ventre, immobile) | `shsit.use.bellyflop` |
+| **Ramper** | `/crawl` | `shsit.use.crawl` |
 | **Sur la tête d'un joueur** | clic droit les deux mains vides sur lui, `/sit playertoggle` pour refuser | `shsit.playersit` (tous) |
 
 Se relever : accroupi (maj) ou retaper la commande. Sur un escalier, le joueur est tourné vers le côté ouvert.
@@ -75,11 +75,13 @@ Les poses ne créent aucune monture : les flags `ride` et `interact` n'ont donc 
 
 | Commande | Description | Permission |
 |---|---|---|
-| `/sit`, `/lay`, `/spin`, `/bellyflop`, `/crawl` | Prendre la pose à l'endroit où l'on se tient, ou se relever en la retapant. | `shsit.command.<nom>` |
+| `/sit`, `/lay`, `/spin`, `/bellyflop`, `/crawl` | Prendre la pose à l'endroit où l'on se tient, ou se relever en la retapant. | `shsit.use.<nom>` |
 | `/sit playertoggle` | Interdire ou autoriser qu'on s'asseye sur soi. | aucune |
-| `/shsit reload` | Recharge la configuration. | `shsit.admin` |
+| `/shsit reload` | Recharge `config.yml` et `messages.yml` ; si un fichier est illisible, l'ancienne configuration reste active. | `shsit.admin.reload` |
+| `/shsit list` | Liste les joueurs posés, avec leur pose et leur monde. | `shsit.admin.list` |
+| `/shsit stand <joueur>` | Relève un joueur posé. | `shsit.admin.stand` |
 
-Les permissions `shsit.command.*` sont `op` par défaut ; la commande vérifie elle-même la permission, y compris sous la forme `/shsit:sit`.
+Les permissions `shsit.use.*` sont `op` par défaut ; la commande vérifie elle-même la permission, y compris sous la forme `/shsit:sit`. Les sous-commandes de `/shsit` fonctionnent aussi depuis la console.
 
 ## Permissions
 
@@ -87,9 +89,11 @@ Les permissions `shsit.command.*` sont `op` par défaut ; la commande vérifie e
 |---|---|---|
 | `shsit.sit` | S'asseoir d'un clic droit sur un bloc. | `true` |
 | `shsit.playersit` | S'asseoir d'un clic droit sur un joueur. | `true` |
-| `shsit.command.sit` `.lay` `.spin` `.bellyflop` `.crawl` | Utiliser la commande. | `op` |
+| `shsit.use` | Les cinq commandes de pose (parent de `shsit.use.<nom>`). | `op` |
+| `shsit.use.sit` `.lay` `.spin` `.bellyflop` `.crawl` | Utiliser la commande. | `op` |
 | `shsit.bypass` | Se poser malgré les protections d'île et de région. | `op` |
-| `shsit.admin` | Recharger la configuration. | `op` |
+| `shsit.admin` | Toutes les sous-commandes de `/shsit` (parent de `shsit.admin.<sous-commande>`). | `op` |
+| `shsit.admin.reload` `.list` `.stand` | Une sous-commande de `/shsit`. | `op` |
 
 ## Configuration
 
@@ -97,10 +101,11 @@ Fichiers par défaut du plugin. Cliquez sur un fichier pour l'ouvrir :
 
 <pre>
 plugins/SHSit/
-└── <a href="src/main/resources/config.yml">config.yml</a>
+├── <a href="src/main/resources/config.yml">config.yml</a>
+└── <a href="src/main/resources/messages.yml">messages.yml</a>
 </pre>
 
-`config.yml` contient les mondes autorisés, le délai, la portée, les fonctions actives, l'empilement des joueurs, la liste des blocs, les règles d'île et les messages. Les clés sont expliquées en commentaire. `settings.debug: true` écrit dans la console la raison de chaque refus et la décision de WorldGuard.
+`config.yml` contient les mondes autorisés, le délai, la portée, les fonctions actives, l'empilement des joueurs, la liste des blocs et les règles d'île ; `messages.yml` tous les textes. Les clés sont expliquées en commentaire. `settings.debug: true` écrit dans la console la raison de chaque refus et la décision de WorldGuard.
 
 ## Compilation
 

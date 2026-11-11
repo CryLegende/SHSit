@@ -1,28 +1,20 @@
 package org.Cry_Legende.sHSit;
 
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.DyeColor;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Tag;
-import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.EnumSet;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 
 /** Valeurs de config.yml, lues une fois à chaque chargement. */
 final class Settings {
-
-    private static final LegacyComponentSerializer LEGACY =
-            LegacyComponentSerializer.builder().character('&').hexColors().build();
 
     final Set<String> worlds;
     final DyeColor cushionColor;
@@ -38,7 +30,6 @@ final class Settings {
     final Set<Material> seatBlocks;
     final boolean islandCoop;
     final boolean islandVisitors;
-    private final Map<String, Component> messages;
 
     private Settings(JavaPlugin plugin, FileConfiguration config) {
         worlds = new HashSet<>(config.getStringList("settings.worlds"));
@@ -60,27 +51,10 @@ final class Settings {
         seatBlocks = parseBlocks(plugin, config.getStringList("blocks"));
         islandCoop = config.getBoolean("island.coop", true);
         islandVisitors = config.getBoolean("island.visitors", false);
-
-        Map<String, Component> parsed = new HashMap<>();
-        ConfigurationSection section = config.getConfigurationSection("messages");
-        if (section != null) {
-            for (String key : section.getKeys(false)) {
-                String text = section.getString(key, "");
-                if (!text.isEmpty()) {
-                    parsed.put(key, LEGACY.deserialize(text));
-                }
-            }
-        }
-        messages = parsed;
     }
 
     static Settings load(JavaPlugin plugin) {
         return new Settings(plugin, plugin.getConfig());
-    }
-
-    /** Message de la config, ou null s'il est absent ou vide. */
-    Component message(String key) {
-        return messages.get(key);
     }
 
     private static DyeColor parseColor(JavaPlugin plugin, String name) {
