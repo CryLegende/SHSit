@@ -196,7 +196,9 @@ final class SitListener implements Listener {
     public void onQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
         sessions.ejectRiders(player);
-        sessions.end(player, false);
+        // Relevé avant la sauvegarde : assis, le serveur le tient 0,6 sous la surface du siège, dans le bloc.
+        // Sauvegardé là, il traverserait un sol d'un bloc d'épaisseur à la reconnexion.
+        sessions.end(player, true);
         sessions.forget(player);
         lastWarning.remove(player.getUniqueId());
     }
