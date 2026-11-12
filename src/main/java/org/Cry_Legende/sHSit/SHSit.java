@@ -1,6 +1,5 @@
 package org.Cry_Legende.sHSit;
 
-import com.github.retrooper.packetevents.PacketEvents;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -20,7 +19,6 @@ public final class SHSit extends JavaPlugin {
     private Messages messages;
     private Sessions sessions;
     private RegionGuard regions;
-    private PacketHook hook;
 
     @Override
     public void onLoad() {
@@ -63,9 +61,7 @@ public final class SHSit extends JavaPlugin {
             }
         }
 
-        hook = new PacketHook(this);
-        PacketEvents.getAPI().getEventManager().registerListener(hook);
-        sessions = new Sessions(this, regions, islands, hook);
+        sessions = new Sessions(this, regions, islands);
         SitListener listener = new SitListener(this, sessions);
         getServer().getPluginManager().registerEvents(listener, this);
 
@@ -87,9 +83,6 @@ public final class SHSit extends JavaPlugin {
     public void onDisable() {
         if (sessions != null) {
             sessions.releaseAll();
-        }
-        if (hook != null) {
-            PacketEvents.getAPI().getEventManager().unregisterListener(hook);
         }
     }
 

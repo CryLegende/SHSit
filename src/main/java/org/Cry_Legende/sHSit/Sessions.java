@@ -1,5 +1,6 @@
 package org.Cry_Legende.sHSit;
 
+import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
@@ -41,7 +42,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Toutes les poses en cours, une par joueur, et toutes les règles anti-abus (start*). Assis et spin :
- * faux véhicule en paquets. Couché : métadonnées de sommeil en paquets. Ramper et bellyflop : vraie nage
+ * faux véhicule en paquets. Couché : métadonnées de sommeil en paquets pour les spectateurs, et pour le joueur
+ * lui-même une copie couchée qui porte sa caméra. Ramper et bellyflop : vraie nage
  * côté serveur et plafond fantôme côté client. Sur la tête d'un joueur : vraie monture, pour que les
  * flags WorldGuard « ride » et le parkour la voient.
  */
@@ -77,6 +79,13 @@ final class Sessions {
         BlockData bedReal;
         BlockData bedFake;
         boolean sleepingIgnored;
+        /** Couché : copie du joueur vue par lui seul, sa caméra s'y installe une fois la pose active. */
+        int cloneId;
+        UUID cloneUuid;
+        Location cloneAt;
+        boolean active;
+        /** Couché : spectateurs arrivés depuis le dernier contrôle, servis au contrôle suivant. */
+        Set<UUID> arriving = new HashSet<>();
         Location ceiling;
         BlockData ceilingFake;
         final Set<UUID> viewers = new HashSet<>();
@@ -108,11 +117,16 @@ final class Sessions {
     private static final double SEAT_DROP = 0.6;
     /** Décalage de l'entité couchée vers la tête par rapport au centre du corps (voir attemptLay). */
     private static final double HEAD_SHIFT = 0.6;
+    /** Hauteur de l'entité couchée au-dessus du sol : celle d'un dormeur au-dessus de son matelas. */
+    private static final double LAY_HEIGHT = 0.125;
+    /** Inclinaison de la copie couchée : en vue F5, la caméra regarde le joueur d'un peu plus haut. */
+    private static final float CLONE_PITCH = 20.0f;
+    /** Ticks entre l'arrivée de la copie chez le client et sa pose de sommeil (voir Packets#spawnClone). */
+    private static final long LAY_DELAY = 3L;
 
     private final SHSit plugin;
     private final RegionGuard regions;
     private final IslandGuard islands;
-    private final PacketHook hook;
     private final NamespacedKey offKey;
     private final NamespacedKey freezeKey;
 
@@ -125,11 +139,10 @@ final class Sessions {
     private CrawlHandler crawlHandler;
     private int crawlers;
 
-    Sessions(SHSit plugin, RegionGuard regions, IslandGuard islands, PacketHook hook) {
+    Sessions(SHSit plugin, RegionGuard regions, IslandGuard islands) {
         this.plugin = plugin;
         this.regions = regions;
         this.islands = islands;
-        this.hook = hook;
         this.offKey = new NamespacedKey(plugin, "playersit_off");
         this.freezeKey = new NamespacedKey(plugin, "bellyflop");
     }
@@ -202,6 +215,14 @@ final class Sessions {
         return result;
     }
 
+    /** Refus silencieux d'une règle anti-mur, avec sa raison dans le journal de debug. */
+    private Result blocked(Player player, String why) {
+        if (plugin.settings().debug) {
+            plugin.getLogger().info(player.getName() + " -> refus anti-mur : " + why);
+        }
+        return Result.BLOCKED;
+    }
+
     // ------------------------------------------------------------------ assis et spin (faux véhicule)
 
     /**
@@ -232,18 +253,19 @@ final class Sessions {
         Location eye = player.getEyeLocation();
         if (clickPoint != null) {
             if (eye.distanceSquared(seat) > settings.maxDistance * settings.maxDistance) {
-                return Result.BLOCKED;
+                return blocked(player, "trop loin des yeux");
             }
             if (!Space.visible(world, eye.toVector(), clickPoint, support)) {
-                return Result.BLOCKED;
+                return blocked(player, "bloc entre les yeux et le point cliqué " + clickPoint);
             }
         }
         if (Math.abs(seat.getY() - feet.getY()) > 2.5) {
-            return Result.BLOCKED;
+            return blocked(player, "siège à " + String.format(java.util.Locale.ROOT, "%.2f", seat.getY() - feet.getY()) + " bloc des pieds");
         }
         if (!Space.visible(world, feet.toVector().add(new Vector(0.0, 0.9, 0.0)),
                 seat.toVector().add(new Vector(0.0, 0.3, 0.0)), support)) {
-            return Result.BLOCKED;
+            return blocked(player, "bloc entre le corps (pieds " + String.format(java.util.Locale.ROOT, "%.2f", feet.getY())
+                    + ") et le siège");
         }
 
         boolean spin = kind == Kind.SPIN;
@@ -289,7 +311,8 @@ final class Sessions {
         Location feet = player.getLocation();
         BlockFace direction = directionOf(feet.getYaw());
         boolean alongZ = direction == BlockFace.NORTH || direction == BlockFace.SOUTH;
-        BoundingBox body = new BoundingBox(surface.getX() - (alongZ ? 0.3 : 0.9), surface.getY() + 0.05,
+        // 0,1 de marge au sol : un chemin de terre est 1/16 plus bas que l'herbe d'à côté, le corps peut y déborder
+        BoundingBox body = new BoundingBox(surface.getX() - (alongZ ? 0.3 : 0.9), surface.getY() + 0.1,
                 surface.getZ() - (alongZ ? 0.9 : 0.3), surface.getX() + (alongZ ? 0.3 : 0.9), surface.getY() + 0.65,
                 surface.getZ() + (alongZ ? 0.9 : 0.3));
         if (Space.collides(world, body)) {
@@ -297,13 +320,11 @@ final class Sessions {
         }
 
         Session session = new Session(player, Kind.LAY);
-        // Le moteur de rendu vanilla dessine le corps couché de 1,52 bloc côté pieds à 0,28 côté tête de la position
-        // de l'entité : pour que le corps soit centré sur la place, l'entité se tient 0,6 bloc côté tête (derrière le regard).
-        Location rest = new Location(world, surface.getX() - direction.getModX() * HEAD_SHIFT, surface.getY() + 0.1125,
-                surface.getZ() - direction.getModZ() * HEAD_SHIFT, feet.getYaw(), feet.getPitch());
-        if (rest.distanceSquared(feet) > 0.0004) {
-            teleportSelf(player, rest);
-        }
+        // Le moteur de rendu vanilla dessine le corps couché de 1,52 bloc côté pieds à 0,36 côté tête de la position de
+        // l'entité, 0,125 au-dessus de sa surface comme sur un matelas : pour que le corps soit centré sur la place,
+        // l'entité se tient 0,6 bloc côté tête (derrière le regard). Tête droite : pas d'inclinaison.
+        Location rest = new Location(world, surface.getX() - direction.getModX() * HEAD_SHIFT, surface.getY() + LAY_HEIGHT,
+                surface.getZ() - direction.getModZ() * HEAD_SHIFT, feet.getYaw(), 0.0f);
         session.rest = rest;
         session.center = surface.toVector().add(new Vector(0.0, 0.5, 0.0));
         session.support = key;
@@ -315,12 +336,38 @@ final class Sessions {
         bed.setPart(Bed.Part.HEAD);
         bed.setFacing(direction.getOppositeFace());
         session.bedFake = bed;
+        // Copie tournée vers sa tête : en vue F5, la caméra se place derrière les pieds et voit le corps en entier
+        session.cloneId = Packets.newEntityId();
+        session.cloneUuid = UUID.randomUUID();
+        session.cloneAt = new Location(world, rest.getX(), rest.getY(), rest.getZ(), feet.getYaw() + 180.0f, CLONE_PITCH);
         session.sleepingIgnored = player.isSleepingIgnored();
         player.setSleepingIgnored(true);
-        hook.track(player.getUniqueId(), true);
         register(session);
-        syncViewers(session);
+        Packets.spawnClone(player, session.cloneId, session.cloneUuid, session.cloneAt);
+        Bukkit.getScheduler().runTaskLater(plugin, () -> activateLay(session), LAY_DELAY);
         return Result.OK;
+    }
+
+    /**
+     * Couché, quelques ticks après la commande : la copie s'endort et reçoit la caméra du joueur, qui se voit allongé
+     * (vue du lit en première personne, son corps en entier en F5). Son client ne dessine plus son vrai joueur et
+     * n'envoie plus sa position : le serveur le garde où il est posé, et les spectateurs voient ce vrai joueur couché.
+     */
+    private void activateLay(Session session) {
+        Player player = session.player;
+        if (byPlayer.get(player.getUniqueId()) != session || !player.isOnline()) {
+            return;
+        }
+        session.active = true;
+        Packets.sleep(player, session.cloneId, session.bed);
+        player.sendBlockChange(session.bed, session.bedFake);
+        Packets.camera(player, session.cloneId);
+        teleportSelf(player, session.rest);
+        syncViewers(session, true);
+        Component hint = plugin.messages().get("lay-hint");
+        if (hint != null) {
+            player.sendActionBar(hint);
+        }
     }
 
     // ------------------------------------------------------------------ ramper et bellyflop
@@ -505,8 +552,11 @@ final class Sessions {
                     }
                 }
                 if (session.kind == Kind.LAY) {
+                    // La caméra revient au joueur avant que la copie disparaisse (une caméra sur une entité retirée resterait figée)
+                    Packets.camera(player, player.getEntityId());
+                    Packets.removeClone(player, session.cloneId, session.cloneUuid);
+                    player.sendBlockChange(session.bed, session.bedReal);
                     player.setSleepingIgnored(session.sleepingIgnored);
-                    hook.track(player.getUniqueId(), false);
                 }
             }
             case CRAWL, BELLYFLOP -> {
@@ -596,6 +646,9 @@ final class Sessions {
                 continue;
             }
             session.age += 5;
+            if (session.kind == Kind.LAY && !session.active) {
+                continue;
+            }
             switch (session.kind) {
                 case SIT, SPIN, LAY -> {
                     // Un joueur posé ne bouge plus : une petite dérive est recalée, un vrai déplacement met fin à la pose.
@@ -645,6 +698,14 @@ final class Sessions {
     // ------------------------------------------------------------------ spectateurs
 
     private void syncViewers(Session session) {
+        syncViewers(session, false);
+    }
+
+    /**
+     * @param immediate couché : servir tout de suite les spectateurs présents (au début de la pose, ils voient déjà
+     *                  le joueur depuis longtemps)
+     */
+    private void syncViewers(Session session, boolean immediate) {
         Player player = session.player;
         Set<UUID> now = new HashSet<>();
         now.add(player.getUniqueId());
@@ -653,24 +714,33 @@ final class Sessions {
                 now.add(viewer.getUniqueId());
             }
         }
-        for (UUID id : now) {
-            if (!session.viewers.contains(id)) {
-                Player viewer = Bukkit.getPlayer(id);
-                if (viewer != null) {
-                    startFor(session, viewer);
-                }
-            }
-        }
         for (UUID id : new ArrayList<>(session.viewers)) {
             if (!now.contains(id)) {
+                session.viewers.remove(id);
                 Player viewer = Bukkit.getPlayer(id);
                 if (viewer != null) {
                     stopFor(session, viewer);
                 }
             }
         }
-        session.viewers.clear();
-        session.viewers.addAll(now);
+        // Couché : un spectateur qui vient de recevoir le joueur attend un contrôle. Au premier tick d'une entité qui
+        // dort, le client vanilla la pose sur son lit : celui-ci est au fond du monde.
+        Set<UUID> waited = session.arriving;
+        session.arriving = new HashSet<>();
+        for (UUID id : now) {
+            if (session.viewers.contains(id)) {
+                continue;
+            }
+            if (session.kind == Kind.LAY && !immediate && !waited.contains(id)) {
+                session.arriving.add(id);
+                continue;
+            }
+            Player viewer = Bukkit.getPlayer(id);
+            if (viewer != null) {
+                startFor(session, viewer);
+                session.viewers.add(id);
+            }
+        }
     }
 
     private void startFor(Session session, Player viewer) {
@@ -684,10 +754,11 @@ final class Sessions {
                 }
             }
             case LAY -> {
-                // Jamais au joueur couché : son client irait se poser sur le lit (au fond du monde) et s'assombrirait
+                // Jamais au joueur couché (il a sa copie) : son client irait se poser sur le lit, au fond du monde, et
+                // s'assombrirait. La pose avant le lit : l'entité ne saute pas sur un lit qu'elle ne connaît pas encore.
                 if (!viewer.getUniqueId().equals(player.getUniqueId())) {
+                    Packets.sleep(viewer, player.getEntityId(), session.bed);
                     viewer.sendBlockChange(session.bed, session.bedFake);
-                    Packets.lay(viewer, player, session.bed, session.rest);
                 }
             }
             default -> {
@@ -716,18 +787,27 @@ final class Sessions {
         }
     }
 
-    /** Le serveur renvoie parfois les métadonnées du joueur en entier : on remet la pose par-dessus. */
+    /**
+     * Le serveur renvoie parfois les métadonnées du joueur en entier : on remet la pose par-dessus. Couché, l'entité
+     * est aussi remise à sa place, au cas où un client l'aurait posée sur le lit du fond du monde, et la copie reprend
+     * l'équipement du joueur.
+     */
     private void refresh(Session session) {
+        Player player = session.player;
         for (UUID id : session.viewers) {
             Player viewer = Bukkit.getPlayer(id);
             if (viewer == null) {
                 continue;
             }
             if (session.kind == Kind.SPIN) {
-                Packets.spin(viewer, session.player);
-            } else if (session.kind == Kind.LAY && !id.equals(session.player.getUniqueId())) {
-                // la pose seule : renvoyer la position de sommeil ferait sauter l'entité au fond du monde puis la ramènerait
-                Packets.layPose(viewer, session.player);
+                Packets.spin(viewer, player);
+            } else if (session.kind == Kind.LAY && id.equals(player.getUniqueId())) {
+                Packets.teleport(viewer, session.cloneId, session.cloneAt);
+                Packets.cloneEquipment(viewer, session.cloneId);
+            } else if (session.kind == Kind.LAY) {
+                // la pose seule : renvoyer la position de sommeil ferait sauter l'entité au fond du monde
+                Packets.layPose(viewer, player.getEntityId());
+                Packets.teleport(viewer, player.getEntityId(), player.getLocation());
             }
         }
     }

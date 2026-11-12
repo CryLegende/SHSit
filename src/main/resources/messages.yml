@@ -20,6 +20,9 @@ target-refuses: '&7&l« &c&lSH &8&l» &7Ce joueur &cne veut pas &7qu''on s''asse
 stack-full: '&7&l« &c&lSH &8&l» &7Il y a &cdéjà trop de monde &7sur cette tête.'
 no-permission: '&7&l« &c&lSH &8&l» &7Cette commande est réservée aux joueurs &fVIP&7.'
 
+# Couché : barre d'action affichée quand le joueur s'allonge
+lay-hint: '&7Vous êtes &eallongé&7 : accroupissez-vous pour vous relever.'
+
 # /sit playertoggle
 playertoggle-on: '&7&l« &a&lSH &8&l» &7On &apeut &7maintenant s''asseoir sur vous.'
 playertoggle-off: '&7&l« &e&lSH &8&l» &7On &cne peut plus &7s''asseoir sur vous.'

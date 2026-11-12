@@ -32,7 +32,7 @@ Utilisé sur : **Opale**. Nécessite **packetevents** et Minecraft 26.3.
 ## Comment c'est fait
 
 - **Assis, spin** : un `item_display` fantôme (sans modèle) est envoyé avec le joueur comme passager. Le serveur place le joueur 0,6 bloc sous la surface du siège, ce qui met les fesses au niveau du bloc, et ne le voit plus bouger.
-- **Couché** : métadonnées de sommeil envoyées au joueur et à ses spectateurs, avec un lit fantôme enterré en bas du monde. La touche « quitter le lit » est lue sur le paquet.
+- **Couché** : les spectateurs reçoivent la pose de sommeil du joueur, avec un lit fantôme enterré en bas du monde qui donne le sens du corps (la pose part avant le lit, sinon le client poserait le joueur sur ce lit). Le joueur lui-même reçoit une copie couchée de lui (même skin, même équipement, hors de la liste des joueurs) et sa caméra s'y installe comme celle d'un spectateur : vue du lit en première personne, tout son corps allongé en F5. Tant que la caméra n'est pas lui, son client ne dessine plus son propre joueur et n'envoie plus sa position, le serveur le garde donc exactement où il est posé. Une barre d'action rappelle de s'accroupir pour se relever.
 - **Ramper, bellyflop** : vraie nage côté serveur, plus un plafond fantôme (barrière ou dalle haute) visible du joueur seul qui force le client à se baisser. Le bellyflop gèle en plus la vitesse.
 - **Sur la tête** : vraie monture sur le joueur porteur, pour que WorldGuard (`ride`) et le parkour la voient. Jusqu'à trois joueurs empilés (réglable).
 - Les spectateurs sont recalculés en continu (arrivée dans la zone, départ, invisibilité).
@@ -65,9 +65,10 @@ Un flag d'état (`allow` / `deny`) par fonction, les mêmes noms que GSit, donc 
 ```
 /rg flag spawn sit deny
 /rg flag mon_salon sit allow
+/rg flag -w spawn __global__ sit allow
 ```
 
-Seul un flag réellement posé sur une région (ou sur la région `__global__` du monde) décide, avec la priorité WorldGuard habituelle (à égalité, `deny` l'emporte). Sans flag, il faut pouvoir construire dans la région ; le contournement WorldGuard compte, mais pas contre un `deny` explicite (seul `shsit.bypass` passe outre).
+Seul un flag réellement posé sur une région (ou sur la région `__global__` du monde) décide, avec la priorité WorldGuard habituelle (à égalité, `deny` l'emporte). Le flag de `__global__` ne compte que là où aucune région ne pose le sien : sur Opale, `sit` et `pose` sont en `allow` sur `__global__` du monde `spawn` (bancs et poses partout au spawn), et les régions `spawn-nosit` et `minikoth` les gardent en `deny`. Sans flag, il faut pouvoir construire dans la région ; le contournement WorldGuard compte, mais pas contre un `deny` explicite (seul `shsit.bypass` passe outre).
 
 Les poses ne créent aucune monture : les flags `ride` et `interact` n'ont donc aucun effet sur elles. Un flag `allow` rend même possible de s'asseoir dans une région protégée par `interact: deny` (le clic annulé par WorldGuard est traité quand la région dit `allow`).
 
