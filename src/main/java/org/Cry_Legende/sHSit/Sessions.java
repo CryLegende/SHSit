@@ -71,6 +71,8 @@ final class Sessions {
         Vector center = new Vector();
         BlockKey support;
         BlockData supportData;
+        /** Assis, spin, couché : le point de la surface où le joueur est posé. */
+        Location seat;
         int vehicleId;
         UUID vehicleUuid;
         Location vehicleAt;
@@ -112,7 +114,13 @@ final class Sessions {
     }
 
     private static final int[][] RING = {{0, 0}, {1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
-    private static final double[] LEVELS = {0.0, 0.5, 1.0, 2.0};
+    /** Sols cherchés autour du siège pour se relever : de tant de blocs sous sa surface à tant de blocs au-dessus. */
+    private static final double STAND_BELOW = 2.0;
+    private static final double STAND_ABOVE = 2.0;
+    /** Un joueur qui a cliqué en sautant se relève au sol d'où il a sauté, cherché jusqu'à cette profondeur. */
+    private static final double JUMP_DROP = 3.0;
+    /** Distance maximale entre le siège et un sol trouvé autour de lui. */
+    private static final double STAND_REACH = 3.0;
     /** Hauteur de la tête assise au-dessus de la surface du siège (pieds à 0,6 sous la surface, yeux à 1,62 des pieds). */
     private static final double SEAT_DROP = 0.6;
     /** Décalage de l'entité couchée vers la tête par rapport au centre du corps (voir attemptLay). */
@@ -129,6 +137,7 @@ final class Sessions {
     private final IslandGuard islands;
     private final NamespacedKey offKey;
     private final NamespacedKey freezeKey;
+    private final NamespacedKey standKey;
 
     // Concurrentes : la mort d'un joueur appelle end() depuis le thread de son monde, en parallèle des autres mondes
     // (ni clé ni valeur nulle : register() ne pose le bloc que s'il y a un support)
@@ -145,6 +154,7 @@ final class Sessions {
         this.islands = islands;
         this.offKey = new NamespacedKey(plugin, "playersit_off");
         this.freezeKey = new NamespacedKey(plugin, "bellyflop");
+        this.standKey = new NamespacedKey(plugin, "stand");
     }
 
     Session of(Player player) {
@@ -229,13 +239,15 @@ final class Sessions {
      * @param support    bloc qui porte le siège (un bloc ne porte qu'un joueur)
      * @param seat       surface où se posent les fesses, au niveau du bloc
      * @param clickPoint point cliqué sur le bloc, ou null pour une commande
+     * @param clicked    bloc cliqué quand ce n'est pas le siège (la dalle qui porte un tapis), sinon null
      * @param yaw        orientation à donner au joueur, ou null pour ne pas le tourner
      */
-    Result startSeat(Player player, Kind kind, Block support, Location seat, Vector clickPoint, Float yaw) {
-        return logged(player, kind, attemptSeat(player, kind, support, seat, clickPoint, yaw));
+    Result startSeat(Player player, Kind kind, Block support, Location seat, Vector clickPoint, Block clicked, Float yaw) {
+        return logged(player, kind, attemptSeat(player, kind, support, seat, clickPoint, clicked, yaw));
     }
 
-    private Result attemptSeat(Player player, Kind kind, Block support, Location seat, Vector clickPoint, Float yaw) {
+    private Result attemptSeat(Player player, Kind kind, Block support, Location seat, Vector clickPoint, Block clicked,
+                               Float yaw) {
         Result refused = precheck(player, kind, seat);
         if (refused != null) {
             return refused;
@@ -255,7 +267,7 @@ final class Sessions {
             if (eye.distanceSquared(seat) > settings.maxDistance * settings.maxDistance) {
                 return blocked(player, "trop loin des yeux");
             }
-            if (!Space.visible(world, eye.toVector(), clickPoint, support)) {
+            if (!Space.visible(world, eye.toVector(), clickPoint, support, clicked)) {
                 return blocked(player, "bloc entre les yeux et le point cliqué " + clickPoint);
             }
         }
@@ -280,6 +292,7 @@ final class Sessions {
             teleportSelf(player, rest);
         }
         session.rest = rest;
+        session.seat = seat.clone();
         session.center = seat.toVector().add(new Vector(0.0, 0.5, 0.0));
         session.support = key;
         session.supportData = normalized(support.getBlockData());
@@ -326,6 +339,7 @@ final class Sessions {
         Location rest = new Location(world, surface.getX() - direction.getModX() * HEAD_SHIFT, surface.getY() + LAY_HEIGHT,
                 surface.getZ() - direction.getModZ() * HEAD_SHIFT, feet.getYaw(), 0.0f);
         session.rest = rest;
+        session.seat = surface.clone();
         session.center = surface.toVector().add(new Vector(0.0, 0.5, 0.0));
         session.support = key;
         session.supportData = normalized(floor.getBlockData());
@@ -820,9 +834,11 @@ final class Sessions {
             byBlock.put(session.support, session.player.getUniqueId());
         }
         lastStart.put(session.player.getUniqueId(), System.currentTimeMillis());
+        remember(session);
     }
 
     private void unregister(Session session) {
+        session.player.getPersistentDataContainer().remove(standKey);
         byPlayer.remove(session.player.getUniqueId());
         if (session.support != null) {
             byBlock.remove(session.support);
@@ -868,33 +884,59 @@ final class Sessions {
         if (session.kind.isCrawl() || !player.isOnline() || player.isDead()) {
             return;
         }
+        Location target = standPoint(player, session, true);
+        if (target != null) {
+            teleportSelf(player, target);
+        }
+    }
+
+    /**
+     * @param keepCurrent vrai pour garder la place actuelle du joueur si elle convient (null est alors renvoyé)
+     * @return où relever le joueur, ou null s'il peut rester où il est (ou si rien ne convient)
+     */
+    private Location standPoint(Player player, Session session, boolean keepCurrent) {
         World world = player.getWorld();
+        Location here = player.getLocation();
         Location origin = session.origin;
         Vector center = session.center;
         if (session.kind == Kind.PLAYERSIT) {
             Player carrier = session.carrier == null ? null : Bukkit.getPlayer(session.carrier);
-            origin = carrier != null ? carrier.getLocation() : player.getLocation();
+            origin = carrier != null ? carrier.getLocation() : here;
             center = origin.toVector().add(new Vector(0.0, 0.5, 0.0));
         }
         if (!world.getUID().equals(origin.getWorld().getUID())) {
-            return;
+            return null;
         }
-        if (usable(world, center, player.getLocation())) {
-            return;
+        // Le siège ne cache pas le sol à celui qui s'y trouve : son bloc ne compte pas comme un mur
+        Block seatBlock = session.support == null ? null : session.support.block();
+        if (keepCurrent && usable(world, center, here, seatBlock, STAND_REACH)) {
+            return null;
         }
-        if (usable(world, center, origin)) {
-            teleportSelf(player, origin);
-            return;
+        // Son point de départ peut être aussi loin que porte un clic : il s'y tenait un instant plus tôt
+        double reach = plugin.settings().maxDistance + 2.0;
+        if (usable(world, center, origin, seatBlock, reach)) {
+            return origin;
         }
+        // Parti d'un saut (ou sol disparu depuis) : le sol sous son point de départ
+        double ground = Space.floorNear(world, origin.getX(), origin.getY(), origin.getZ(), 0.0, JUMP_DROP);
+        if (!Double.isNaN(ground)) {
+            Location landed = origin.clone();
+            landed.setY(ground);
+            if (usable(world, center, landed, seatBlock, reach)) {
+                return landed;
+            }
+        }
+        // Les sols réels autour du siège (tapis, dalle, escalier, bloc plein), le plus proche du point de départ d'abord
         List<Location> candidates = new ArrayList<>();
         int baseX = (int) Math.floor(center.getX());
         int baseZ = (int) Math.floor(center.getZ());
-        double baseY = Math.floor(center.getY() - 0.5 + 1.0e-6);
+        double surface = center.getY() - 0.5;
         for (int[] offset : RING) {
-            for (double level : LEVELS) {
-                Location candidate = new Location(world, baseX + offset[0] + 0.5, baseY + level, baseZ + offset[1] + 0.5,
-                        player.getLocation().getYaw(), player.getLocation().getPitch());
-                if (usable(world, center, candidate)) {
+            for (double top : Space.tops(world, baseX + offset[0], baseZ + offset[1], surface - STAND_BELOW,
+                    surface + STAND_ABOVE)) {
+                Location candidate = new Location(world, baseX + offset[0] + 0.5, top, baseZ + offset[1] + 0.5,
+                        here.getYaw(), here.getPitch());
+                if (usable(world, center, candidate, seatBlock, STAND_REACH)) {
                     candidates.add(candidate);
                 }
             }
@@ -902,12 +944,66 @@ final class Sessions {
         Location reference = origin;
         candidates.sort(Comparator.comparingDouble(candidate -> candidate.distanceSquared(reference)));
         if (!candidates.isEmpty()) {
-            teleportSelf(player, candidates.get(0));
+            return candidates.get(0);
+        }
+        // Rien de libre autour : debout sur le siège même (ou sur ce qui reste dessous), quitte à se baisser sous un
+        // plafond. Rester où le serveur tenait le joueur assis le ferait tomber à travers le bloc.
+        if (session.seat != null) {
+            double top = Space.floorNear(world, session.seat.getX(), session.seat.getY(), session.seat.getZ(), 0.55, 1.0);
+            if (!Double.isNaN(top)) {
+                return new Location(world, session.seat.getX(), top, session.seat.getZ(), here.getYaw(), here.getPitch());
+            }
+        }
+        return null;
+    }
+
+    private boolean usable(World world, Vector center, Location feet, Block seatBlock, double reach) {
+        return feet.distanceSquared(center.toLocation(world)) <= reach * reach && Space.standable(feet)
+                && Space.visible(world, center, feet.toVector().add(new Vector(0.0, 0.9, 0.0)), seatBlock);
+    }
+
+    // ------------------------------------------------------------------ secours après un arrêt brutal
+
+    /**
+     * Assis, le serveur tient le joueur dans le bloc du siège : sauvegardé là par un arrêt brutal, il traverserait le
+     * sol à son retour. Le point où le relever est donc noté sur lui, et effacé dès que la pose se termine normalement.
+     */
+    private void remember(Session session) {
+        if (session.seat == null) {
+            return;
+        }
+        Location safe = standPoint(session.player, session, false);
+        if (safe != null) {
+            session.player.getPersistentDataContainer().set(standKey, PersistentDataType.STRING,
+                    safe.getWorld().getUID() + ";" + safe.getX() + ";" + safe.getY() + ";" + safe.getZ());
         }
     }
 
-    private boolean usable(World world, Vector center, Location feet) {
-        return feet.distanceSquared(center.toLocation(world)) <= 9.0 && Space.standable(feet)
-                && Space.visible(world, center, feet.toVector().add(new Vector(0.0, 0.9, 0.0)), null);
+    /** À la connexion : un joueur qui porte encore la note d'une pose (arrêt brutal du serveur) est relevé. */
+    void recover(Player player) {
+        String note = player.getPersistentDataContainer().get(standKey, PersistentDataType.STRING);
+        if (note == null) {
+            return;
+        }
+        player.getPersistentDataContainer().remove(standKey);
+        try {
+            String[] parts = note.split(";");
+            World world = Bukkit.getWorld(UUID.fromString(parts[0]));
+            Location here = player.getLocation();
+            if (world == null || !world.equals(here.getWorld()) || Space.standable(here)) {
+                return;
+            }
+            Location safe = new Location(world, Double.parseDouble(parts[1]), Double.parseDouble(parts[2]),
+                    Double.parseDouble(parts[3]), here.getYaw(), here.getPitch());
+            if (safe.distanceSquared(here) <= 49.0) {
+                if (plugin.settings().debug) {
+                    plugin.getLogger().info(player.getName() + " -> relevé à la connexion (arrêt du serveur pendant sa pose), il était à y="
+                            + String.format(java.util.Locale.ROOT, "%.3f", here.getY()));
+                }
+                teleportSelf(player, safe);
+            }
+        } catch (RuntimeException ignored) {
+            // note illisible : rien à faire
+        }
     }
 }

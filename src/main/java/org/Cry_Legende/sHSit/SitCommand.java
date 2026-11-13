@@ -72,7 +72,7 @@ final class SitCommand implements CommandExecutor, TabCompleter {
         }
         Location seat = new Location(feet.getWorld(), feet.getX(), floor.getY() + top, feet.getZ(), feet.getYaw(), feet.getPitch());
         Sessions.Result result = switch (kind) {
-            case SIT, SPIN -> sessions.startSeat(player, kind, floor, seat, null, null);
+            case SIT, SPIN -> sessions.startSeat(player, kind, floor, seat, null, null, null);
             case LAY -> sessions.startLay(player, floor, seat);
             default -> sessions.startCrawl(player, kind);
         };

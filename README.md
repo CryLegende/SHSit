@@ -25,7 +25,7 @@ Rien n'est posé dans le monde : le siège est un **faux véhicule invisible env
 | **Ramper** | `/crawl` | `shsit.use.crawl` |
 | **Sur la tête d'un joueur** | clic droit les deux mains vides sur lui, `/sit playertoggle` pour refuser | `shsit.playersit` (tous) |
 
-Se relever : accroupi (maj) ou retaper la commande. Sur un escalier, le joueur est tourné vers le côté ouvert.
+Se relever : accroupi (maj) ou retaper la commande. Un tapis posé sur une dalle haute (banc) se vise aussi en cliquant la dalle qui le porte. Sur un escalier, le joueur est tourné vers le côté ouvert.
 
 Utilisé sur : **Opale**. Nécessite **packetevents** et Minecraft 26.3.
 
@@ -41,7 +41,8 @@ Utilisé sur : **Opale**. Nécessite **packetevents** et Minecraft 26.3.
 
 | Abus | Réponse |
 |---|---|
-| Traverser un mur en s'asseyant puis en se relevant | Le clic doit viser le siège sans bloc au milieu (rayon depuis les yeux), le chemin du corps jusqu'au siège doit être libre, la portée est limitée. À la relève, le joueur est replacé sur un sol libre **visible depuis le siège**, jamais de l'autre côté d'un mur. |
+| Traverser un mur en s'asseyant puis en se relevant | Le clic doit viser le siège sans bloc au milieu (rayon depuis les yeux), le chemin du corps jusqu'au siège doit être libre, la portée est limitée. À la relève, le joueur est replacé sur un sol libre **visible depuis le siège**, jamais de l'autre côté d'un mur : son point de départ, sinon le sol sous ce point (clic en sautant), sinon le sol réel le plus proche autour du siège (tapis, dalle, escalier), et faute de mieux le dessus du siège lui-même. Il n'est jamais laissé dans le bloc du siège. |
+| Serveur arrêté brutalement pendant une pose | Le point où relever le joueur est noté sur lui pendant la pose : à sa reconnexion, il est relevé au lieu de traverser le sol. |
 | Bouger alors qu'on est posé (client modifié) | Le serveur ne voit plus bouger un joueur posé : une dérive est recalée, un vrai déplacement met fin à la pose. Le bellyflop ramène celui qui avance. |
 | Spammer pour décaler la position | Délai entre deux poses, une pose par joueur, une personne par bloc. |
 | Se faire porter hors d'une zone | Le joueur assis sur une tête est descendu dès que la région ou l'île où il arrive l'interdit, et quand le porteur s'accroupit. |

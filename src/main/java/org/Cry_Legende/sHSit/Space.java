@@ -120,20 +120,114 @@ final class Space {
     }
 
     /**
-     * Vrai si rien ne se trouve entre les deux points, hors le bloc ignoré (le siège lui-même).
+     * Vrai si rien ne se trouve entre les deux points, hors les blocs ignorés (le siège lui-même, le bloc cliqué).
      * Les blocs sans collision (herbe, torches, eau) ne comptent pas.
      */
-    static boolean visible(World world, Vector from, Vector to, Block ignored) {
+    static boolean visible(World world, Vector from, Vector to, Block... ignored) {
         Vector direction = to.clone().subtract(from);
         double length = direction.length();
         if (length < 1.0e-4) {
             return true;
         }
-        RayTraceResult hit = world.rayTraceBlocks(from.toLocation(world), direction.normalize(), length,
-                FluidCollisionMode.NEVER, true);
-        if (hit == null || hit.getHitBlock() == null) {
-            return true;
+        direction.normalize();
+        Vector start = from.clone();
+        // Un bloc ignoré arrête le rayon : on repart juste derrière lui, tant qu'il reste des blocs ignorés à traverser
+        for (int pass = 0; pass <= (ignored == null ? 0 : ignored.length); pass++) {
+            double left = to.distance(start);
+            if (left < 1.0e-4) {
+                return true;
+            }
+            RayTraceResult hit = world.rayTraceBlocks(start.toLocation(world), direction, left, FluidCollisionMode.NEVER, true);
+            if (hit == null || hit.getHitBlock() == null) {
+                return true;
+            }
+            if (!isIgnored(hit.getHitBlock(), ignored)) {
+                return false;
+            }
+            start = exit(hit.getHitBlock(), hit.getHitPosition(), direction);
+            if (start.clone().subtract(from).lengthSquared() >= length * length) {
+                return true;
+            }
         }
-        return ignored != null && hit.getHitBlock().equals(ignored);
+        return false;
+    }
+
+    private static boolean isIgnored(Block block, Block[] ignored) {
+        if (ignored != null) {
+            for (Block other : ignored) {
+                if (other != null && other.equals(block)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** Point où un rayon entré dans la case de ce bloc en ressort, un rien plus loin. */
+    private static Vector exit(Block block, Vector entry, Vector direction) {
+        double travel = Double.MAX_VALUE;
+        double[] position = {entry.getX(), entry.getY(), entry.getZ()};
+        double[] step = {direction.getX(), direction.getY(), direction.getZ()};
+        int[] cell = {block.getX(), block.getY(), block.getZ()};
+        for (int axis = 0; axis < 3; axis++) {
+            if (Math.abs(step[axis]) > 1.0e-9) {
+                double edge = step[axis] > 0.0 ? cell[axis] + 1.0 : cell[axis];
+                travel = Math.min(travel, Math.max(0.0, (edge - position[axis]) / step[axis]));
+            }
+        }
+        return entry.clone().add(direction.clone().multiply((travel == Double.MAX_VALUE ? 0.0 : travel) + 1.0e-3));
+    }
+
+    /**
+     * Hauteur du sol qui porterait un joueur placé à ce point : le dessus de collision le plus haut sous ses pieds,
+     * entre « au-dessus » et « en dessous » de la hauteur donnée. NaN s'il n'y en a pas.
+     */
+    static double floorNear(World world, double x, double y, double z, double above, double below) {
+        double half = WIDTH / 2.0 - EPSILON;
+        double best = Double.NaN;
+        int x0 = (int) Math.floor(x - half);
+        int x1 = (int) Math.floor(x + half);
+        int z0 = (int) Math.floor(z - half);
+        int z1 = (int) Math.floor(z + half);
+        for (int by = (int) Math.floor(y + above); by >= (int) Math.floor(y - below) - 1; by--) {
+            for (int bx = x0; bx <= x1; bx++) {
+                for (int bz = z0; bz <= z1; bz++) {
+                    Block block = world.getBlockAt(bx, by, bz);
+                    if (block.isPassable()) {
+                        continue;
+                    }
+                    for (BoundingBox part : block.getCollisionShape().getBoundingBoxes()) {
+                        double top = by + part.getMaxY();
+                        if (top > y + above + 1.0e-6 || top < y - below - 1.0e-6
+                                || bx + part.getMaxX() <= x - half || bx + part.getMinX() >= x + half
+                                || bz + part.getMaxZ() <= z - half || bz + part.getMinZ() >= z + half) {
+                            continue;
+                        }
+                        if (Double.isNaN(best) || top > best) {
+                            best = top;
+                        }
+                    }
+                }
+            }
+        }
+        return best;
+    }
+
+    /** Hauteurs où l'on peut poser les pieds au centre de cette colonne, entre deux hauteurs : les dessus de collision. */
+    static java.util.List<Double> tops(World world, int x, int z, double minY, double maxY) {
+        java.util.List<Double> tops = new java.util.ArrayList<>();
+        for (int by = (int) Math.floor(minY) - 1; by <= (int) Math.floor(maxY); by++) {
+            Block block = world.getBlockAt(x, by, z);
+            if (block.isPassable()) {
+                continue;
+            }
+            for (BoundingBox part : block.getCollisionShape().getBoundingBoxes()) {
+                double top = by + part.getMaxY();
+                if (top >= minY - 1.0e-6 && top <= maxY + 1.0e-6 && !tops.contains(top)) {
+                    tops.add(top);
+                }
+            }
+        }
+        return tops;
     }
 }

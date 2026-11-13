@@ -17,6 +17,7 @@ import org.bukkit.event.entity.EntityDismountEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.player.PlayerToggleSneakEvent;
@@ -72,10 +73,19 @@ final class SitListener implements Listener {
             skipped(player, "mains non vides");
             return;
         }
+        Block clicked = null;
         double surface = Space.seatSurface(block);
         if (Double.isNaN(surface)) {
-            skipped(player, "moitié haute ou bloc sans surface");
-            return;
+            // Banc : un tapis posé sur une dalle haute (ou un escalier retourné). Cliquer ce porteur, c'est viser le tapis.
+            Block above = block.getRelative(BlockFace.UP);
+            double thin = settings.seatBlocks.contains(above.getType()) ? Space.seatSurface(above) : Double.NaN;
+            if (Double.isNaN(thin) || thin > 0.2) {
+                skipped(player, "moitié haute ou bloc sans surface");
+                return;
+            }
+            clicked = block;
+            block = above;
+            surface = thin;
         }
         Location seat = block.getLocation().add(0.5, surface, 0.5);
         if (event.useInteractedBlock() == Event.Result.DENY
@@ -87,7 +97,7 @@ final class SitListener implements Listener {
                 ? yawOf(stairs.getFacing().getOppositeFace()) : null;
         Vector click = event.getInteractionPoint() == null ? null : event.getInteractionPoint().toVector();
 
-        Sessions.Result result = sessions.startSeat(player, Kind.SIT, block, seat, click, yaw);
+        Sessions.Result result = sessions.startSeat(player, Kind.SIT, block, seat, click, clicked, yaw);
         if (result == Sessions.Result.OK) {
             event.setUseInteractedBlock(Event.Result.DENY);
             event.setUseItemInHand(Event.Result.DENY);
@@ -201,6 +211,12 @@ final class SitListener implements Listener {
         sessions.end(player, true);
         sessions.forget(player);
         lastWarning.remove(player.getUniqueId());
+    }
+
+    /** Après un arrêt brutal du serveur pendant une pose : le joueur n'est pas laissé dans le bloc de son siège. */
+    @EventHandler
+    public void onJoin(PlayerJoinEvent event) {
+        sessions.recover(event.getPlayer());
     }
 
     @EventHandler
