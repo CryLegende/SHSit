@@ -37,9 +37,8 @@
 settings:
   # Mondes où l'on peut se poser (liste vide = tous les mondes)
   worlds:
-    - spawn
-    - SuperiorWorld
-    - Christmas
+    - world
+    - world_nether
   # Secondes minimum entre deux poses d'un même joueur
   cooldown: 1.0
   # Les deux mains vides obligatoires pour s'asseoir d'un clic droit (sinon le clic pose le bloc tenu)
