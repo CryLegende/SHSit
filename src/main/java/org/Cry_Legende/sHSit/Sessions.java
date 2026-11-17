@@ -138,6 +138,7 @@ final class Sessions {
     private final NamespacedKey offKey;
     private final NamespacedKey freezeKey;
     private final NamespacedKey standKey;
+    private final NamespacedKey gravityKey;
 
     // Concurrentes : la mort d'un joueur appelle end() depuis le thread de son monde, en parallèle des autres mondes
     // (ni clé ni valeur nulle : register() ne pose le bloc que s'il y a un support)
@@ -155,6 +156,7 @@ final class Sessions {
         this.offKey = new NamespacedKey(plugin, "playersit_off");
         this.freezeKey = new NamespacedKey(plugin, "bellyflop");
         this.standKey = new NamespacedKey(plugin, "stand");
+        this.gravityKey = new NamespacedKey(plugin, "seat_gravity");
     }
 
     Session of(Player player) {
@@ -301,8 +303,29 @@ final class Sessions {
         session.vehicleAt = new Location(world, seat.getX(), spin ? seat.getY() + SEAT_DROP : seat.getY(), seat.getZ(),
                 rest.getYaw(), 0.0f);
         register(session);
+        hold(player);
         syncViewers(session);
         return Result.OK;
+    }
+
+    /**
+     * Le siège n'existe que chez les clients : le serveur croit le joueur debout à sa place et le fait tomber à chaque tick
+     * avant de le remettre en place. Au-dessus du vide (banc suspendu), sa pose basculait alors entre couché et accroupi en
+     * boucle, chez lui et chez les spectateurs. Sans gravité pendant la pose, il reste où il est. Le modificateur est
+     * transitoire : rien n'est écrit dans ses données si le serveur s'arrête pendant la pose.
+     */
+    private void hold(Player player) {
+        AttributeInstance gravity = player.getAttribute(Attribute.GRAVITY);
+        if (gravity != null && gravity.getModifier(gravityKey) == null) {
+            gravity.addTransientModifier(new AttributeModifier(gravityKey, -1.0, AttributeModifier.Operation.MULTIPLY_SCALAR_1));
+        }
+    }
+
+    private void release(Player player) {
+        AttributeInstance gravity = player.getAttribute(Attribute.GRAVITY);
+        if (gravity != null && gravity.getModifier(gravityKey) != null) {
+            gravity.removeModifier(gravityKey);
+        }
     }
 
     // ------------------------------------------------------------------ couché
@@ -559,6 +582,7 @@ final class Sessions {
         Player player = session.player;
         switch (session.kind) {
             case SIT, SPIN, LAY -> {
+                release(player);
                 for (UUID id : session.viewers) {
                     Player viewer = Bukkit.getPlayer(id);
                     if (viewer != null) {
