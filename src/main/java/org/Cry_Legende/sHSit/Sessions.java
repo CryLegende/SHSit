@@ -16,7 +16,6 @@ import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.Waterlogged;
 import org.bukkit.block.data.type.Bed;
-import org.bukkit.block.data.type.Slab;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -44,7 +43,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Toutes les poses en cours, une par joueur, et toutes les règles anti-abus (start*). Assis et spin :
  * faux véhicule en paquets. Couché : métadonnées de sommeil en paquets pour les spectateurs, et pour le joueur
  * lui-même une copie couchée qui porte sa caméra. Ramper et bellyflop : vraie nage
- * côté serveur et plafond fantôme côté client. Sur la tête d'un joueur : vraie monture, pour que les
+ * côté serveur et plafond invisible côté client (shulker invisible en paquets). Sur la tête d'un joueur : vraie monture, pour que les
  * flags WorldGuard « ride » et le parkour la voient.
  */
 final class Sessions {
@@ -88,8 +87,12 @@ final class Sessions {
         boolean active;
         /** Couché : spectateurs arrivés depuis le dernier contrôle, servis au contrôle suivant. */
         Set<UUID> arriving = new HashSet<>();
-        Location ceiling;
-        BlockData ceilingFake;
+        /** Ramper : plafond invisible (shulker sur un support) envoyé au joueur seul, et où son support a été mis. */
+        int ceilingSupportId;
+        UUID ceilingSupportUuid;
+        int ceilingBoxId;
+        UUID ceilingBoxUuid;
+        Location ceilingAt;
         final Set<UUID> viewers = new HashSet<>();
         int age;
 
@@ -129,6 +132,11 @@ final class Sessions {
     private static final double LAY_HEIGHT = 0.125;
     /** Inclinaison de la copie couchée : en vue F5, la caméra regarde le joueur d'un peu plus haut. */
     private static final float CLONE_PITCH = 20.0f;
+    /**
+     * Ramper : hauteur du bas du plafond invisible au-dessus des pieds. Le client rampe quand il tient sur 0,6 de haut mais
+     * pas sur 1,5 (accroupi) ; à 1,125, il peut encore monter une dalle ou une marche (0,5) sans se cogner.
+     */
+    private static final double CEILING_LIFT = 1.125;
     /** Ticks entre l'arrivée de la copie chez le client et sa pose de sommeil (voir Packets#spawnClone). */
     private static final long LAY_DELAY = 3L;
 
@@ -439,43 +447,33 @@ final class Sessions {
             Bukkit.getPluginManager().registerEvents(crawlHandler, plugin);
         }
         crawlers++;
-        updateCeiling(session);
+        session.ceilingSupportId = Packets.newEntityId();
+        session.ceilingSupportUuid = UUID.randomUUID();
+        session.ceilingBoxId = Packets.newEntityId();
+        session.ceilingBoxUuid = UUID.randomUUID();
+        session.ceilingAt = ceilingFor(feet);
+        Packets.spawnCeiling(player, session.ceilingSupportId, session.ceilingSupportUuid, session.ceilingBoxId,
+                session.ceilingBoxUuid, session.ceilingAt);
         return Result.OK;
     }
 
+    /** Où mettre le plafond invisible pour ces pieds (voir {@link #CEILING_LIFT}). */
+    private static Location ceilingFor(Location feet) {
+        return new Location(feet.getWorld(), feet.getX(), feet.getY() + CEILING_LIFT, feet.getZ());
+    }
+
     /**
-     * Le client se baisse tout seul sous un plafond : on lui en fabrique un juste au-dessus de la tête
-     * (barrière, ou dalle haute si le joueur est sur un demi-bloc), visible de lui seul.
+     * Le client se baisse tout seul sous un plafond : son plafond invisible le suit. Une dalle ou un bloc fantôme
+     * au-dessus de la tête se voyait en F5 ; le shulker invisible, lui, ne se dessine jamais.
      */
     private void updateCeiling(Session session) {
-        Player player = session.player;
-        Location at = player.getLocation();
-        World world = at.getWorld();
-        Block cell = world.getBlockAt(at.getBlockX(), (int) Math.floor(at.getY()) + 1, at.getBlockZ());
-        Location want = null;
-        BlockData fake = null;
-        if (cell.isPassable() && !cell.isLiquid()) {
-            want = cell.getLocation();
-            if (at.getY() - Math.floor(at.getY()) < 0.1) {
-                fake = Material.BARRIER.createBlockData();
-            } else {
-                Slab slab = (Slab) Material.STONE_SLAB.createBlockData();
-                slab.setType(Slab.Type.TOP);
-                fake = slab;
-            }
-        }
-        if (want == null ? session.ceiling == null : (session.ceiling != null && want.equals(session.ceiling)
-                && fake.equals(session.ceilingFake))) {
+        Location want = ceilingFor(session.player.getLocation());
+        if (session.ceilingAt != null && session.ceilingAt.getWorld() == want.getWorld()
+                && session.ceilingAt.distanceSquared(want) < 1.0E-4) {
             return;
         }
-        if (session.ceiling != null) {
-            player.sendBlockChange(session.ceiling, session.ceiling.getBlock().getBlockData());
-        }
-        session.ceiling = want;
-        session.ceilingFake = fake;
-        if (want != null) {
-            player.sendBlockChange(want, fake);
-        }
+        session.ceilingAt = want;
+        Packets.teleport(session.player, session.ceilingSupportId, want);
     }
 
     /** Écouteurs du ramper, enregistrés seulement tant que quelqu'un rampe. */
@@ -603,8 +601,8 @@ final class Sessions {
                 if (speed != null && speed.getModifier(freezeKey) != null) {
                     speed.removeModifier(freezeKey);
                 }
-                if (session.ceiling != null) {
-                    player.sendBlockChange(session.ceiling, session.ceiling.getBlock().getBlockData());
+                if (session.ceilingAt != null) {
+                    Packets.destroy(player, session.ceilingBoxId, session.ceilingSupportId);
                 }
                 if (--crawlers <= 0 && crawlHandler != null) {
                     HandlerList.unregisterAll(crawlHandler);
@@ -717,6 +715,7 @@ final class Sessions {
                     } else if (session.kind == Kind.BELLYFLOP && player.getLocation().distanceSquared(session.rest) > 0.25) {
                         // couché sur le ventre, on ne marche plus : un client qui avance quand même est ramené
                         teleportSelf(player, session.rest);
+                        updateCeiling(session);
                     }
                 }
                 case PLAYERSIT -> {

@@ -45,8 +45,12 @@ import java.util.UUID;
  */
 final class Packets {
 
-    // Indices des métadonnées de joueur sur 26.3 : Entity#pose, LivingEntity#flags, LivingEntity#sleepingPos,
-    // Avatar#mainHand, Avatar#modelCustomisation (couches du skin)
+    // Indices des métadonnées sur 26.3 : Entity#flags, Entity#silent, Entity#noGravity, Entity#pose, LivingEntity#flags,
+    // LivingEntity#sleepingPos, Avatar#mainHand, Avatar#modelCustomisation (couches du skin)
+    private static final int SHARED_FLAGS = 0;
+    private static final int SILENT = 4;
+    private static final int NO_GRAVITY = 5;
+    private static final byte INVISIBLE_FLAG = 0x20;
     private static final int POSE = 6;
     private static final int LIVING_FLAGS = 8;
     private static final int SLEEPING_POS = 14;
@@ -165,6 +169,24 @@ final class Packets {
                 new Equipment(EquipmentSlot.CHEST_PLATE, SpigotConversionUtil.fromBukkitItemStack(equipment.getChestplate())),
                 new Equipment(EquipmentSlot.LEGGINGS, SpigotConversionUtil.fromBukkitItemStack(equipment.getLeggings())),
                 new Equipment(EquipmentSlot.BOOTS, SpigotConversionUtil.fromBukkitItemStack(equipment.getBoots())))));
+    }
+
+    /**
+     * Plafond invisible du joueur qui rampe, chez lui seul : un shulker invisible, muet et immobile, passager d'un
+     * support invisible (un shulker posé seul se cale sur une hauteur entière ; passager, il se tient où on le met).
+     * Sa boîte d'un bloc commence à la hauteur du support : entre 0,6 et 1,5 au-dessus des pieds, le client ne tient
+     * plus debout ni accroupi et se met à ramper. Contrairement à un faux bloc, rien n'est dessiné, même en F5.
+     */
+    static void spawnCeiling(Player viewer, int supportId, UUID supportUuid, int boxId, UUID boxUuid, Location at) {
+        spawnSeat(viewer, supportId, supportUuid, at);
+        send(viewer, new WrapperPlayServerSpawnEntity(boxId, Optional.of(boxUuid), EntityTypes.SHULKER,
+                new Vector3d(at.getX(), at.getY(), at.getZ()), 0.0f, 0.0f, 0.0f, 0,
+                Optional.of(new Vector3d(0.0, 0.0, 0.0))));
+        send(viewer, new WrapperPlayServerEntityMetadata(boxId, List.of(
+                new EntityData<>(SHARED_FLAGS, EntityDataTypes.BYTE, INVISIBLE_FLAG),
+                new EntityData<>(SILENT, EntityDataTypes.BOOLEAN, true),
+                new EntityData<>(NO_GRAVITY, EntityDataTypes.BOOLEAN, true))));
+        mount(viewer, supportId, boxId);
     }
 
     /** Retire la copie du joueur de son client. */
