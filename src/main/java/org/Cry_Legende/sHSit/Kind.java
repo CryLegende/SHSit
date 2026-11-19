@@ -17,11 +17,6 @@ enum Kind {
         this.flag = flag;
     }
 
-    /** Le joueur est assis sur un faux véhicule envoyé en paquets (aucune entité côté serveur). */
-    boolean usesFakeSeat() {
-        return this == SIT || this == SPIN;
-    }
-
     boolean isCrawl() {
         return this == CRAWL || this == BELLYFLOP;
     }

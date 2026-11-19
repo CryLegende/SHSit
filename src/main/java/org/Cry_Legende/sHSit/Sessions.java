@@ -40,8 +40,8 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Toutes les poses en cours, une par joueur, et toutes les règles anti-abus (start*). Assis et spin :
- * faux véhicule en paquets. Couché : métadonnées de sommeil en paquets pour les spectateurs, et pour le joueur
+ * Toutes les poses en cours, une par joueur, et toutes les règles anti-abus (start*). Assis : faux véhicule en
+ * paquets. Spin : pose de trident en paquets, joueur figé par ses attributs (sans siège, jambes droites). Couché : métadonnées de sommeil en paquets pour les spectateurs, et pour le joueur
  * lui-même une copie couchée qui porte sa caméra. Ramper et bellyflop : vraie nage
  * côté serveur et plafond invisible côté client (shulker invisible en paquets). Sur la tête d'un joueur : vraie monture, pour que les
  * flags WorldGuard « ride » et le parkour la voient.
@@ -147,6 +147,7 @@ final class Sessions {
     private final NamespacedKey freezeKey;
     private final NamespacedKey standKey;
     private final NamespacedKey gravityKey;
+    private final NamespacedKey jumpKey;
 
     // Concurrentes : la mort d'un joueur appelle end() depuis le thread de son monde, en parallèle des autres mondes
     // (ni clé ni valeur nulle : register() ne pose le bloc que s'il y a un support)
@@ -165,6 +166,7 @@ final class Sessions {
         this.freezeKey = new NamespacedKey(plugin, "bellyflop");
         this.standKey = new NamespacedKey(plugin, "stand");
         this.gravityKey = new NamespacedKey(plugin, "seat_gravity");
+        this.jumpKey = new NamespacedKey(plugin, "pose_jump");
     }
 
     Session of(Player player) {
@@ -243,7 +245,7 @@ final class Sessions {
         return Result.BLOCKED;
     }
 
-    // ------------------------------------------------------------------ assis et spin (faux véhicule)
+    // ------------------------------------------------------------------ assis (faux véhicule) et spin
 
     /**
      * @param support    bloc qui porte le siège (un bloc ne porte qu'un joueur)
@@ -296,7 +298,9 @@ final class Sessions {
         }
 
         Session session = new Session(player, kind);
-        Location rest = new Location(world, seat.getX(), spin ? seat.getY() : seat.getY() - SEAT_DROP, seat.getZ(),
+        // Spin : le corps tourne autour des pieds, à plat ; posé au sol il s'y enfoncerait à moitié. Il flotte donc 0,6 bloc
+        // au-dessus de la surface (sans gravité pendant la pose), comme quand il était passager du faux siège.
+        Location rest = new Location(world, seat.getX(), spin ? seat.getY() + SEAT_DROP : seat.getY() - SEAT_DROP, seat.getZ(),
                 yaw != null ? yaw : feet.getYaw(), feet.getPitch());
         if (rest.distanceSquared(feet) > 0.0004 || yaw != null) {
             teleportSelf(player, rest);
@@ -306,14 +310,45 @@ final class Sessions {
         session.center = seat.toVector().add(new Vector(0.0, 0.5, 0.0));
         session.support = key;
         session.supportData = normalized(support.getBlockData());
-        session.vehicleId = Packets.newEntityId();
-        session.vehicleUuid = UUID.randomUUID();
-        session.vehicleAt = new Location(world, seat.getX(), spin ? seat.getY() + SEAT_DROP : seat.getY(), seat.getZ(),
-                rest.getYaw(), 0.0f);
+        if (!spin) {
+            session.vehicleId = Packets.newEntityId();
+            session.vehicleUuid = UUID.randomUUID();
+            session.vehicleAt = new Location(world, seat.getX(), seat.getY(), seat.getZ(), rest.getYaw(), 0.0f);
+        }
         register(session);
         hold(player);
+        if (spin) {
+            // Sans siège : un passager est toujours dessiné jambes pliées. Il tient sur place par ses attributs.
+            freeze(player, true);
+        }
         syncViewers(session);
         return Result.OK;
+    }
+
+    /**
+     * Plus de marche (ni de saut si demandé) : le client applique lui-même ces attributs. Transitoires, ils ne sont pas
+     * écrits dans les données du joueur si le serveur s'arrête pendant la pose.
+     */
+    private void freeze(Player player, boolean jump) {
+        AttributeInstance speed = player.getAttribute(Attribute.MOVEMENT_SPEED);
+        if (speed != null && speed.getModifier(freezeKey) == null) {
+            speed.addTransientModifier(new AttributeModifier(freezeKey, -1.0, AttributeModifier.Operation.MULTIPLY_SCALAR_1));
+        }
+        AttributeInstance strength = jump ? player.getAttribute(Attribute.JUMP_STRENGTH) : null;
+        if (strength != null && strength.getModifier(jumpKey) == null) {
+            strength.addTransientModifier(new AttributeModifier(jumpKey, -1.0, AttributeModifier.Operation.MULTIPLY_SCALAR_1));
+        }
+    }
+
+    private void unfreeze(Player player) {
+        AttributeInstance speed = player.getAttribute(Attribute.MOVEMENT_SPEED);
+        if (speed != null && speed.getModifier(freezeKey) != null) {
+            speed.removeModifier(freezeKey);
+        }
+        AttributeInstance strength = player.getAttribute(Attribute.JUMP_STRENGTH);
+        if (strength != null && strength.getModifier(jumpKey) != null) {
+            strength.removeModifier(jumpKey);
+        }
     }
 
     /**
@@ -437,10 +472,7 @@ final class Sessions {
         register(session);
         player.setSwimming(true);
         if (kind == Kind.BELLYFLOP) {
-            AttributeInstance speed = player.getAttribute(Attribute.MOVEMENT_SPEED);
-            if (speed != null && speed.getModifier(freezeKey) == null) {
-                speed.addModifier(new AttributeModifier(freezeKey, -1.0, AttributeModifier.Operation.MULTIPLY_SCALAR_1));
-            }
+            freeze(player, false);
         }
         if (crawlHandler == null) {
             crawlHandler = new CrawlHandler();
@@ -581,6 +613,7 @@ final class Sessions {
         switch (session.kind) {
             case SIT, SPIN, LAY -> {
                 release(player);
+                unfreeze(player);
                 for (UUID id : session.viewers) {
                     Player viewer = Bukkit.getPlayer(id);
                     if (viewer != null) {
@@ -597,10 +630,7 @@ final class Sessions {
             }
             case CRAWL, BELLYFLOP -> {
                 player.setSwimming(false);
-                AttributeInstance speed = player.getAttribute(Attribute.MOVEMENT_SPEED);
-                if (speed != null && speed.getModifier(freezeKey) != null) {
-                    speed.removeModifier(freezeKey);
-                }
+                unfreeze(player);
                 if (session.ceilingAt != null) {
                     Packets.destroy(player, session.ceilingBoxId, session.ceilingSupportId);
                 }
@@ -783,13 +813,11 @@ final class Sessions {
     private void startFor(Session session, Player viewer) {
         Player player = session.player;
         switch (session.kind) {
-            case SIT, SPIN -> {
+            case SIT -> {
                 Packets.spawnSeat(viewer, session.vehicleId, session.vehicleUuid, session.vehicleAt);
                 Packets.mount(viewer, session.vehicleId, player.getEntityId());
-                if (session.kind == Kind.SPIN) {
-                    Packets.spin(viewer, player);
-                }
             }
+            case SPIN -> Packets.spin(viewer, player);
             case LAY -> {
                 // Jamais au joueur couché (il a sa copie) : son client irait se poser sur le lit, au fond du monde, et
                 // s'assombrirait. La pose avant le lit : l'entité ne saute pas sur un lit qu'elle ne connaît pas encore.
@@ -806,13 +834,11 @@ final class Sessions {
     private void stopFor(Session session, Player viewer) {
         Player player = session.player;
         switch (session.kind) {
-            case SIT, SPIN -> {
+            case SIT -> {
                 Packets.mount(viewer, session.vehicleId);
                 Packets.destroy(viewer, session.vehicleId);
-                if (session.kind == Kind.SPIN) {
-                    Packets.restore(viewer, player);
-                }
             }
+            case SPIN -> Packets.restore(viewer, player);
             case LAY -> {
                 if (!viewer.getUniqueId().equals(player.getUniqueId())) {
                     viewer.sendBlockChange(session.bed, session.bedReal);
@@ -1004,6 +1030,8 @@ final class Sessions {
 
     /** À la connexion : un joueur qui porte encore la note d'une pose (arrêt brutal du serveur) est relevé. */
     void recover(Player player) {
+        // Avant 1.3.3, le gel du bellyflop était enregistré avec le joueur : un arrêt brutal pendant la pose le laissait figé
+        unfreeze(player);
         String note = player.getPersistentDataContainer().get(standKey, PersistentDataType.STRING);
         if (note == null) {
             return;
