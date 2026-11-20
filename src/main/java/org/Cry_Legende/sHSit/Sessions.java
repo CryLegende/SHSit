@@ -103,6 +103,15 @@ final class Sessions {
         }
     }
 
+    /**
+     * La pose du joueur (sit, lay, spin, bellyflop, crawl, playersit), ou une chaîne vide s'il n'est pas posé. Lisible
+     * depuis n'importe quel thread (placeholder).
+     */
+    String poseOf(UUID player) {
+        Session session = byPlayer.get(player);
+        return session == null ? "" : session.kind.id;
+    }
+
     /** Résultat d'une tentative ; message est la clé du message à envoyer, ou null si le refus est silencieux. */
     enum Result {
         OK(null), COOLDOWN(null), UNAVAILABLE(null), BLOCKED(null), FAILED(null), DISABLED(null),

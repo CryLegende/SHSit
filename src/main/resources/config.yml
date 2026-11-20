@@ -25,6 +25,10 @@
 #
 # Les textes sont dans messages.yml.
 #
+# PlaceholderAPI (facultatif) :
+#   %shsit_pose%                        Pose du joueur : sit, lay, spin, bellyflop, crawl, playersit, ou vide.
+#   %shsit_assis%                       true s'il est assis (sit ou playersit), false sinon.
+#
 # WorldGuard : un flag par fonction, en allow ou deny sur une région (/rg flag <région> sit deny).
 #   sit        : s'asseoir (clic et /sit)
 #   pose       : /lay, /bellyflop, /spin

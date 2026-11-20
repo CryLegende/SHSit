@@ -19,6 +19,7 @@ public final class SHSit extends JavaPlugin {
     private Messages messages;
     private Sessions sessions;
     private RegionGuard regions;
+    private PoseExpansion poses;
 
     @Override
     public void onLoad() {
@@ -74,6 +75,14 @@ public final class SHSit extends JavaPlugin {
             }
         }
         sessions.startJanitor();
+        if (getServer().getPluginManager().isPluginEnabled("PlaceholderAPI")) {
+            try {
+                poses = new PoseExpansion(this, sessions);
+                poses.register();
+            } catch (LinkageError e) {
+                getLogger().warning("PlaceholderAPI illisible, %shsit_pose% indisponible : " + e);
+            }
+        }
         getLogger().info("SHSit prêt (" + settings.enabled.size() + " fonctions, " + settings.seatBlocks.size()
                 + " types de blocs, île : " + (islands != null ? "oui" : "non") + ", régions : "
                 + (regions != null ? "oui" : "non") + ").");
@@ -81,6 +90,9 @@ public final class SHSit extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (poses != null) {
+            poses.unregister();
+        }
         if (sessions != null) {
             sessions.releaseAll();
         }

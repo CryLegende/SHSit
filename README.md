@@ -29,6 +29,8 @@ Se relever : accroupi (maj) ou retaper la commande. Un tapis posé sur une dalle
 
 Utilisé sur : **Opale**. Nécessite **packetevents** et Minecraft 26.3.
 
+Avec **PlaceholderAPI** (facultatif) : `%shsit_pose%` donne la pose du joueur (`sit`, `lay`, `spin`, `bellyflop`, `crawl`, `playersit`, vide s'il n'est pas posé) et `%shsit_assis%` vaut `true` quand il est assis (sur un bloc, sur place ou sur la tête d'un joueur). Un autre plugin peut ainsi tenir compte d'un joueur assis (énigme de présence SHEnigmes, condition de dialogue...).
+
 ## Comment c'est fait
 
 - **Spin** : pose de trident envoyée en paquets, sans siège (un passager est toujours dessiné jambes pliées) : le joueur flotte 0,6 bloc au-dessus de la surface (le corps tourne à plat autour des pieds) et tient sur place par ses attributs (vitesse, saut et gravité à zéro, modificateurs transitoires).

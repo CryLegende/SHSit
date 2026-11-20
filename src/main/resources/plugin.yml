@@ -5,7 +5,7 @@ api-version: '1.21'
 author: Cry_Legende
 description: S'asseoir, s'allonger, ramper, tournoyer et s'asseoir sur la tête des autres, en paquets (remplace GSit).
 depend: [packetevents]
-softdepend: [WorldGuard, SuperiorSkyblock2]
+softdepend: [WorldGuard, SuperiorSkyblock2, PlaceholderAPI]
 
 commands:
   sit:
